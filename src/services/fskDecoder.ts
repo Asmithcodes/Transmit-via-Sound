@@ -96,10 +96,13 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
     let stopped = false;
 
     const stop = () => {
+        if (stopped) return; // Guard: prevent double-stop
         stopped = true;
-        if (pollTimer !== null) clearInterval(pollTimer);
+        if (pollTimer !== null) { clearInterval(pollTimer); pollTimer = null; }
         stream?.getTracks().forEach(t => t.stop());
-        ctx?.close();
+        // Only close if not already closed — prevents InvalidStateError
+        if (ctx && ctx.state !== 'closed') ctx.close();
+        ctx = null;
     };
 
     try {

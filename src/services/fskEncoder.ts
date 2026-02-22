@@ -99,6 +99,14 @@ const INTER_CHUNK_SILENCE_S = 0.1;
 export function transmitText(text: string, onStatus: TxStatusCallback): () => void {
     let ctx: AudioContext | null = null;
     let aborted = false;
+    let ctxClosed = false; // Tracks whether we already closed the AudioContext
+
+    const safeClose = () => {
+        if (ctx && !ctxClosed && ctx.state !== 'closed') {
+            ctxClosed = true;
+            ctx.close();
+        }
+    };
 
     // We schedule everything ahead of time using AudioContext.currentTime,
     // then use real-time callbacks (setTimeout) to update UI progress.
@@ -148,21 +156,21 @@ export function transmitText(text: string, onStatus: TxStatusCallback): () => vo
 
             // Wait until the timeline finishes, then close the context.
             const totalWallTimeMs = (cursor - ctx.currentTime) * 1000;
-            setTimeout(async () => {
+            setTimeout(() => {
                 if (!aborted) {
                     onStatus({ type: 'complete' });
                 }
-                await ctx?.close();
+                safeClose();
             }, totalWallTimeMs + 200);
 
         } catch (err) {
             onStatus({ type: 'error', message: String(err) });
-            await ctx?.close();
+            safeClose();
         }
     })();
 
     return () => {
         aborted = true;
-        ctx?.close();
+        safeClose();
     };
 }
