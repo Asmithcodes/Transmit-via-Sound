@@ -225,14 +225,18 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                 const baseStart = rawPolls.length - totalPollsNeeded - offset;
                 if (baseStart < 0) continue;
 
+                const votedPattern: number[] = [];
                 let match = true;
+
                 for (let sym = 0; sym < pLen; sym++) {
                     const trit = majorityVote(baseStart + offset + sym * pollsPerSymbol, pollsPerSymbol);
+                    votedPattern.push(trit);
                     if (trit !== SYNC_PREAMBLE[sym]) {
                         match = false;
-                        break;
                     }
                 }
+
+                console.debug(`[RX][SYNC] Offset ${offset}: [${votedPattern.join(',')}]`);
 
                 if (match) return offset;
             }
@@ -295,7 +299,11 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                 rawPolls.push(trit);
 
                 // Every few polls, try to find the preamble at any offset.
-                if (rawPolls.length % pollsPerSymbol === 0) {
+                if (rawPolls.length > 0 && rawPolls.length % pollsPerSymbol === 0) {
+                    // Debug: log the rolling raw buffer
+                    const recentRaw = rawPolls.slice(-pollsPerSymbol * 4).map(t => t >= 0 ? t : '.').join('');
+                    console.debug(`[RX][SYNC] Buffer (${rawPolls.length} polls). Recent raw: [${recentRaw}]`);
+
                     const offset = findPreambleOffset();
                     if (offset >= 0) {
                         // Preamble found at this phase offset!
@@ -311,12 +319,6 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
 
                         console.debug(`[RX] ✅ Preamble found! Phase offset=${offset}, rawPolls=${rawPolls.length}. Data collection aligned.`);
                         rawPolls.length = 0; // Free memory
-                    }
-
-                    // Debug: log what the current best-effort looks like
-                    if (phase === 'SYNCING' && rawPolls.length % (pollsPerSymbol * 4) === 0) {
-                        const sample = rawPolls.slice(-pollsPerSymbol * 4).join(',');
-                        console.debug(`[RX][SYNC] ${rawPolls.length} polls. Recent: [${sample}]`);
                     }
                 }
 
