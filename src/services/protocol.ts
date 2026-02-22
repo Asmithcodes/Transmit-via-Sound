@@ -50,8 +50,16 @@ export const HANDSHAKE_FREQ_B = 1050; // Hz
 // 350 ms gives the receiver ~8-9 polls to confirm the tone (robust over acoustic path).
 export const HANDSHAKE_TONE_DURATION_S = 0.35;
 
-// Silence gap between handshake tones (seconds).
-export const HANDSHAKE_SILENCE_S = 0.15;
+// Silence gap between handshake tones and before preamble (seconds).
+export const HANDSHAKE_SILENCE_S = 0.25;
+
+// --- Sync Preamble ---
+// Sent immediately after the handshake, before actual data.
+// The receiver scans for this alternating max/min pattern to self-synchronize
+// its symbol vote windows with the transmitter's symbol boundaries.
+// This is the standard technique used in real FSK protocols (UART start bits,
+// modem training sequences, etc.).
+export const SYNC_PREAMBLE: readonly number[] = [7, 0, 7, 0, 7, 0, 7, 0];
 
 // --- End-of-Transmission Tone ---
 export const EOT_FREQ = 700; // Hz  (below FSK range — unambiguous)

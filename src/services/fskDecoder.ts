@@ -27,6 +27,7 @@ import {
     RX_DETECTION_THRESHOLD,
     FFT_SIZE,
     RX_POLL_INTERVAL_MS,
+    SYNC_PREAMBLE,
     tritsToBytes,
     bytesToText,
     parsePacket,
@@ -160,29 +161,52 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
         const sampleRate = ctx.sampleRate;
 
         // --- State machine ---
-        // WAITING_A  → tone A confirmed
-        // WAITING_B  → tone B first detected
-        // LOCKING    → waiting for tone B to DISAPPEAR (so we know when data actually starts)
-        // ALIGNING   → silence gap: a setTimeout will flip us to COLLECTING at the right moment
-        // COLLECTING → voting on FSK symbols
+        // WAITING_A  → handshake tone A detected (hold-confirmed)
+        // WAITING_B  → handshake tone B first detected
+        // SYNCING    → collecting trits and scanning for preamble pattern [7,0,7,0,7,0,7,0]
+        // COLLECTING → preamble found; all subsequent trits are data; packet assembly
         // DONE       → all packets received
-        type Phase = 'WAITING_A' | 'WAITING_B' | 'LOCKING' | 'ALIGNING' | 'COLLECTING' | 'DONE';
+        type Phase = 'WAITING_A' | 'WAITING_B' | 'SYNCING' | 'COLLECTING' | 'DONE';
         let phase: Phase = 'WAITING_A';
 
-        // Symbol accumulation
+        // Symbol accumulation (shared by SYNCING and COLLECTING)
         const pollsPerSymbol = Math.round((SYMBOL_DURATION_S * 1000) / RX_POLL_INTERVAL_MS);
-        const voteBucket: number[] = []; // accumulated trit votes within one symbol window
-        const allTrits: number[] = [];   // ordered trits for the full transmission
+        const voteBucket: number[] = [];
+        const allTrits: number[] = [];
 
         // Packet reassembly
-        const receivedPackets = new Map<number, Uint8Array>(); // chunkIndex → payload
+        const receivedPackets = new Map<number, Uint8Array>();
         let totalExpectedChunks = -1;
 
-        // Handshake phase gating variables.
+        // Handshake gating
         let handshakeADetectedAt = 0;
-        const MIN_HANDSHAKE_HOLD_MS = 80; // Require tone A for ≥2 polls before accepting
+        const MIN_HANDSHAKE_HOLD_MS = 80;
         let handshakeAHoldStart = 0;
-        let lockingAbsentRuns = 0;        // Consecutive polls where tone B is absent (LOCKING phase)
+
+        // Sync preamble scanning
+        let syncStartedAt = 0;
+        const SYNC_TIMEOUT_MS = 10000; // Give up if preamble not found in 10s
+
+        /** Majority-vote a symbol from the current vote bucket. Returns the
+         *  winning trit (0..7) or -1 if no valid votes were recorded. */
+        function commitSymbol(): number {
+            const valid = voteBucket.filter(t => t >= 0);
+            voteBucket.length = 0;
+            if (valid.length === 0) return -1;
+            const freq: Record<number, number> = {};
+            for (const v of valid) freq[v] = (freq[v] ?? 0) + 1;
+            return Number(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]);
+        }
+
+        /** Check if the last N trits in `allTrits` match the SYNC_PREAMBLE pattern. */
+        function preambleMatched(): boolean {
+            const len = SYNC_PREAMBLE.length;
+            if (allTrits.length < len) return false;
+            for (let i = 0; i < len; i++) {
+                if (allTrits[allTrits.length - len + i] !== SYNC_PREAMBLE[i]) return false;
+            }
+            return true;
+        }
 
         onStatus({ type: 'listening' });
 
@@ -199,7 +223,7 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                         phase = 'WAITING_B';
                         handshakeADetectedAt = Date.now();
                         handshakeAHoldStart = 0;
-                        console.debug('[RX] Handshake A confirmed (900 Hz). Waiting for B (1050 Hz)...');
+                        console.debug('[RX] Handshake A confirmed (900 Hz). Waiting for B...');
                         onStatus({ type: 'syncing' });
                     }
                 } else {
@@ -207,97 +231,78 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                 }
 
             } else if (phase === 'WAITING_B') {
-                // Window: generous enough to span the full A+silence+B duration.
                 const elapsed = Date.now() - handshakeADetectedAt;
-                const windowMs = (HANDSHAKE_TONE_DURATION_S + HANDSHAKE_SILENCE_S + HANDSHAKE_TONE_DURATION_S) * 1000 + 400;
+                const windowMs = (HANDSHAKE_TONE_DURATION_S + HANDSHAKE_SILENCE_S + HANDSHAKE_TONE_DURATION_S) * 1000 + 500;
 
                 if (detectHandshakeTone(fftData, sampleRate, HANDSHAKE_FREQ_B)) {
-                    // Tone B is now audible. Move to LOCKING so we can detect
-                    // when it ENDS — that's when we know data is about to start.
-                    phase = 'LOCKING';
-                    lockingAbsentRuns = 0;
-                    console.debug('[RX] Handshake B detected (1050 Hz). Locking on tone end...');
+                    // Go straight to SYNCING — we'll self-align via preamble scan.
+                    phase = 'SYNCING';
+                    syncStartedAt = Date.now();
+                    voteBucket.length = 0;
+                    allTrits.length = 0;
+                    console.debug('[RX] Handshake B detected. Scanning for sync preamble...');
+                    onStatus({ type: 'receiving', chunk: 0, totalChunks: 0 });
                 } else if (elapsed > windowMs) {
                     console.debug(`[RX] Handshake B timeout after ${elapsed}ms. Resetting.`);
                     phase = 'WAITING_A';
                     onStatus({ type: 'listening' });
                 }
 
-            } else if (phase === 'LOCKING') {
-                // Wait for tone B to disappear, then arm a timed delay equal to
-                // the post-handshake silence gap.  When that fires, collection
-                // starts phase-locked to the first data symbol boundary.
-                const elapsed = Date.now() - handshakeADetectedAt;
+            } else if (phase === 'SYNCING') {
+                // Collect trits via majority vote, then scan for the preamble
+                // pattern.  The preamble is an alternating [7,0,7,0...] sequence
+                // that can ONLY match when the vote windows are aligned to the
+                // transmitter's symbol boundaries (misaligned windows see
+                // intermediate values like 3, 4, 2... not clean 7s and 0s).
+                const trit = detectFSKSymbol(fftData, sampleRate);
+                voteBucket.push(trit);
 
-                if (!detectHandshakeTone(fftData, sampleRate, HANDSHAKE_FREQ_B)) {
-                    lockingAbsentRuns++;
-                    if (lockingAbsentRuns >= 2) {
-                        // Tone B has definitely ended.  Schedule COLLECTING to
-                        // start after the encoder's silence gap.
-                        phase = 'ALIGNING';
-                        console.debug(`[RX] Tone B ended. Waiting ${Math.round(HANDSHAKE_SILENCE_S * 1000)}ms silence gap then collecting...`);
-                        setTimeout(() => {
-                            if (stopped || phase !== 'ALIGNING') return;
-                            voteBucket.length = 0;
+                if (voteBucket.length >= pollsPerSymbol) {
+                    const winner = commitSymbol();
+                    if (winner >= 0) {
+                        allTrits.push(winner);
+                        console.debug(`[RX][SYNC] trit=${winner}, buffer=[...${allTrits.slice(-SYNC_PREAMBLE.length).join(',')}]`);
+
+                        if (preambleMatched()) {
+                            // Preamble found!  Discard everything (it was all preamble
+                            // or junk before the preamble).  Data starts NOW.
                             allTrits.length = 0;
                             phase = 'COLLECTING';
-                            console.debug('[RX] Phase-locked! Data collection started.');
-                            onStatus({ type: 'receiving', chunk: 0, totalChunks: 0 });
-                        }, HANDSHAKE_SILENCE_S * 1000);
+                            console.debug('[RX] ✅ Sync preamble found! Data collection aligned.');
+                        }
                     }
-                } else {
-                    lockingAbsentRuns = 0; // Still hearing B — keep waiting
                 }
 
-                // Global safety: if something went wrong, reset after 5 s
-                if (elapsed > 5000) {
+                // Timeout: if we never find the preamble, go back to listening.
+                if (Date.now() - syncStartedAt > SYNC_TIMEOUT_MS) {
+                    console.debug('[RX] Sync preamble timeout. Resetting.');
                     phase = 'WAITING_A';
+                    allTrits.length = 0;
                     onStatus({ type: 'listening' });
                 }
 
-            } else if (phase === 'ALIGNING') {
-                // Waiting for the setTimeout to fire — do nothing.
-
             } else if (phase === 'COLLECTING') {
                 const trit = detectFSKSymbol(fftData, sampleRate);
-                voteBucket.push(trit); // -1 = silence/noise counts as no signal
+                voteBucket.push(trit);
 
-                // Once we have enough votes for one symbol window, commit.
                 if (voteBucket.length >= pollsPerSymbol) {
-                    // Majority vote among non-negative results.
-                    const valid = voteBucket.filter(t => t >= 0);
-                    if (valid.length > 0) {
-                        const freq: Record<number, number> = {};
-                        for (const v of valid) freq[v] = (freq[v] ?? 0) + 1;
-                        const winner = Number(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]);
+                    const winner = commitSymbol();
+                    if (winner >= 0) {
                         allTrits.push(winner);
-                        console.debug(`[RX] Symbol committed: trit=${winner} (${valid.length}/${voteBucket.length} valid votes). Total trits: ${allTrits.length}`);
-                    } else {
-                        console.debug(`[RX] Symbol window: no valid votes (all silence/noise). Total trits: ${allTrits.length}`);
+                        console.debug(`[RX] Symbol: trit=${winner}, total=${allTrits.length}`);
                     }
-                    voteBucket.length = 0;
 
-                    // Minimum trits needed for the smallest possible packet
-                    // (header + 1 payload byte + CRC).
+                    // Minimum trits for smallest possible packet.
                     const minTritsForMinPacket = Math.ceil(
                         ((PACKET_HEADER_BYTES + 1 + PACKET_CRC_BYTES) * 8) / 3
                     );
-                    // Maximum trits for a full-size packet.
                     const maxTritsPerPacket = Math.ceil(
                         ((PACKET_HEADER_BYTES + MAX_PAYLOAD_BYTES + PACKET_CRC_BYTES) * 8) / 3
                     );
 
                     if (allTrits.length >= minTritsForMinPacket) {
-                        // Sliding-window scan: try parsing from offset 0; on CRC failure,
-                        // advance by 1 trit and retry until we find a valid packet or
-                        // exhaust the reasonable search window.
-                        //
-                        // This handles timing drift and minor bit errors by discarding
-                        // corrupted leading trits rather than deadlocking.
+                        // Sliding-window scan for a valid packet.
                         let foundPacket = false;
-
-                        // Only scan up to maxTritsPerPacket ahead from the start
-                        // to avoid re-scanning a packet we already consumed.
                         const scanLimit = Math.min(
                             allTrits.length - minTritsForMinPacket + 1,
                             maxTritsPerPacket
@@ -312,12 +317,11 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                             const packet = parsePacket(raw);
 
                             if (packet && packet.crcValid) {
-                                console.debug(`[RX] Valid packet found at trit offset ${offset}: chunk ${packet.chunkIndex + 1}/${packet.totalChunks}, payload=${packet.payload.length}B`);
+                                console.debug(`[RX] ✅ Valid packet at offset ${offset}: chunk ${packet.chunkIndex + 1}/${packet.totalChunks}, ${packet.payload.length}B`);
 
                                 if (!receivedPackets.has(packet.chunkIndex)) {
                                     totalExpectedChunks = packet.totalChunks;
                                     receivedPackets.set(packet.chunkIndex, packet.payload);
-
                                     onStatus({
                                         type: 'receiving',
                                         chunk: receivedPackets.size,
@@ -325,21 +329,17 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                                     });
                                 }
 
-                                // Discard all trits up to and including this packet.
                                 const tritsConsumed = offset + Math.ceil(
                                     ((PACKET_HEADER_BYTES + packet.payload.length + PACKET_CRC_BYTES) * 8) / 3
                                 );
                                 allTrits.splice(0, tritsConsumed);
                                 foundPacket = true;
 
-                                // Check if we have all chunks.
-                                if (
-                                    totalExpectedChunks > 0 &&
-                                    receivedPackets.size >= totalExpectedChunks
-                                ) {
+                                if (totalExpectedChunks > 0 && receivedPackets.size >= totalExpectedChunks) {
                                     phase = 'DONE';
                                     const reconstructed = reassemble(receivedPackets, totalExpectedChunks);
                                     const text = bytesToText(reconstructed);
+                                    console.debug(`[RX] ✅ Complete! Decoded: "${text}"`);
                                     onStatus({ type: 'complete', text });
                                     stop();
                                 }
@@ -348,10 +348,7 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                         }
 
                         if (!foundPacket && allTrits.length > maxTritsPerPacket * 2) {
-                            // We've accumulated way more trits than one packet needs
-                            // and still no valid parse — drop the oldest trit to avoid
-                            // an ever-growing buffer (graceful degradation).
-                            console.debug(`[RX] Buffer too large (${allTrits.length} trits), discarding 1 leading trit.`);
+                            console.debug(`[RX] Buffer overflow (${allTrits.length} trits), dropping 1.`);
                             allTrits.shift();
                         }
                     }

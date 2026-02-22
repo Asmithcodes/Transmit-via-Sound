@@ -21,6 +21,7 @@ import {
     EOT_FREQ,
     EOT_DURATION_S,
     TX_AMPLITUDE,
+    SYNC_PREAMBLE,
     textToBytes,
     bytesToTrits,
     chunkData,
@@ -131,6 +132,13 @@ export function transmitText(text: string, onStatus: TxStatusCallback): () => vo
 
             // Global handshake at the very start.
             cursor = scheduleHandshake(ctx, gainNode, cursor);
+
+            // Sync preamble: alternating max/min tones that the receiver
+            // scans for to self-synchronize its symbol vote windows.
+            for (const trit of SYNC_PREAMBLE) {
+                playTone(ctx, gainNode, FSK_FREQUENCIES[trit], cursor, SYMBOL_DURATION_S);
+                cursor += SYMBOL_DURATION_S;
+            }
 
             // Schedule each packet with UI callback timing.
             for (let i = 0; i < packets.length; i++) {
