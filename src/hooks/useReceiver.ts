@@ -78,7 +78,7 @@ export function useReceiver(): UseReceiverReturn {
         setStatus(s);
         switch (s.type) {
             case 'listening':
-                addLog('Microphone access granted. Listening for handshake on 900Hz / 1050Hz...', 'info');
+                addLog('Listening for handshake on 900Hz / 1050Hz...', 'info');
                 break;
             case 'syncing':
                 addLog('Handshake tone A (900Hz) detected! Waiting for tone B (1050Hz)...', 'success');

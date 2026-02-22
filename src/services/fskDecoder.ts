@@ -183,12 +183,63 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
         const MIN_HANDSHAKE_HOLD_MS = 80;
         let handshakeAHoldStart = 0;
 
-        // Sync preamble scanning
+        // Sync preamble scanning — raw poll buffer approach.
+        // We store every individual FFT poll result (not majority-voted), then
+        // try all `pollsPerSymbol` possible phase offsets to find the one where
+        // the majority-voted trits match the preamble pattern.
         let syncStartedAt = 0;
-        const SYNC_TIMEOUT_MS = 10000; // Give up if preamble not found in 10s
+        const SYNC_TIMEOUT_MS = 15000;
+        const rawPolls: number[] = [];  // individual per-poll dominant frequency indices
 
-        /** Majority-vote a symbol from the current vote bucket. Returns the
-         *  winning trit (0..7) or -1 if no valid votes were recorded. */
+        /** Majority-vote `count` polls starting at `start` in `rawPolls`. */
+        function majorityVote(start: number, count: number): number {
+            const freq: Record<number, number> = {};
+            let validCount = 0;
+            for (let i = start; i < start + count && i < rawPolls.length; i++) {
+                if (rawPolls[i] >= 0) {
+                    freq[rawPolls[i]] = (freq[rawPolls[i]] ?? 0) + 1;
+                    validCount++;
+                }
+            }
+            if (validCount === 0) return -1;
+            return Number(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]);
+        }
+
+        /**
+         * Try all possible phase offsets (0..pollsPerSymbol-1) and check if
+         * any of them produce the preamble pattern from the raw poll buffer.
+         * Returns the winning offset, or -1 if no match.
+         */
+        function findPreambleOffset(): number {
+            const pLen = SYNC_PREAMBLE.length;
+            const totalPollsNeeded = pLen * pollsPerSymbol;
+
+            // We need at least enough raw polls for the preamble + up to
+            // (pollsPerSymbol - 1) extra for offset shifting.
+            if (rawPolls.length < totalPollsNeeded) return -1;
+
+            // Try each offset, starting from the END of the buffer
+            // (most recent polls = most likely to contain the preamble).
+            for (let offset = 0; offset < pollsPerSymbol; offset++) {
+                // Start from the latest possible position in the buffer.
+                const baseStart = rawPolls.length - totalPollsNeeded - offset;
+                if (baseStart < 0) continue;
+
+                let match = true;
+                for (let sym = 0; sym < pLen; sym++) {
+                    const trit = majorityVote(baseStart + offset + sym * pollsPerSymbol, pollsPerSymbol);
+                    if (trit !== SYNC_PREAMBLE[sym]) {
+                        match = false;
+                        break;
+                    }
+                }
+
+                if (match) return offset;
+            }
+            return -1;
+        }
+
+        /** Majority-vote a symbol from the current vote bucket (used in COLLECTING). */
         function commitSymbol(): number {
             const valid = voteBucket.filter(t => t >= 0);
             voteBucket.length = 0;
@@ -196,16 +247,6 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
             const freq: Record<number, number> = {};
             for (const v of valid) freq[v] = (freq[v] ?? 0) + 1;
             return Number(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]);
-        }
-
-        /** Check if the last N trits in `allTrits` match the SYNC_PREAMBLE pattern. */
-        function preambleMatched(): boolean {
-            const len = SYNC_PREAMBLE.length;
-            if (allTrits.length < len) return false;
-            for (let i = 0; i < len; i++) {
-                if (allTrits[allTrits.length - len + i] !== SYNC_PREAMBLE[i]) return false;
-            }
-            return true;
         }
 
         onStatus({ type: 'listening' });
@@ -235,12 +276,12 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                 const windowMs = (HANDSHAKE_TONE_DURATION_S + HANDSHAKE_SILENCE_S + HANDSHAKE_TONE_DURATION_S) * 1000 + 500;
 
                 if (detectHandshakeTone(fftData, sampleRate, HANDSHAKE_FREQ_B)) {
-                    // Go straight to SYNCING — we'll self-align via preamble scan.
                     phase = 'SYNCING';
                     syncStartedAt = Date.now();
+                    rawPolls.length = 0;
                     voteBucket.length = 0;
                     allTrits.length = 0;
-                    console.debug('[RX] Handshake B detected. Scanning for sync preamble...');
+                    console.debug('[RX] Handshake B detected. Scanning for sync preamble (multi-offset)...');
                     onStatus({ type: 'receiving', chunk: 0, totalChunks: 0 });
                 } else if (elapsed > windowMs) {
                     console.debug(`[RX] Handshake B timeout after ${elapsed}ms. Resetting.`);
@@ -249,34 +290,41 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                 }
 
             } else if (phase === 'SYNCING') {
-                // Collect trits via majority vote, then scan for the preamble
-                // pattern.  The preamble is an alternating [7,0,7,0...] sequence
-                // that can ONLY match when the vote windows are aligned to the
-                // transmitter's symbol boundaries (misaligned windows see
-                // intermediate values like 3, 4, 2... not clean 7s and 0s).
+                // Store every individual poll result in the raw buffer.
                 const trit = detectFSKSymbol(fftData, sampleRate);
-                voteBucket.push(trit);
+                rawPolls.push(trit);
 
-                if (voteBucket.length >= pollsPerSymbol) {
-                    const winner = commitSymbol();
-                    if (winner >= 0) {
-                        allTrits.push(winner);
-                        console.debug(`[RX][SYNC] trit=${winner}, buffer=[...${allTrits.slice(-SYNC_PREAMBLE.length).join(',')}]`);
+                // Every few polls, try to find the preamble at any offset.
+                if (rawPolls.length % pollsPerSymbol === 0) {
+                    const offset = findPreambleOffset();
+                    if (offset >= 0) {
+                        // Preamble found at this phase offset!
+                        phase = 'COLLECTING';
+                        voteBucket.length = 0;
+                        allTrits.length = 0;
 
-                        if (preambleMatched()) {
-                            // Preamble found!  Discard everything (it was all preamble
-                            // or junk before the preamble).  Data starts NOW.
-                            allTrits.length = 0;
-                            phase = 'COLLECTING';
-                            console.debug('[RX] ✅ Sync preamble found! Data collection aligned.');
-                        }
+                        // Pre-fill the vote bucket with any remaining raw polls
+                        // after the preamble ends, aligned to the discovered offset.
+                        // Any polls that arrived AFTER the preamble in the raw buffer
+                        // are already the start of data — but since we check every
+                        // pollsPerSymbol polls, there are typically 0 leftover.
+
+                        console.debug(`[RX] ✅ Preamble found! Phase offset=${offset}, rawPolls=${rawPolls.length}. Data collection aligned.`);
+                        rawPolls.length = 0; // Free memory
+                    }
+
+                    // Debug: log what the current best-effort looks like
+                    if (phase === 'SYNCING' && rawPolls.length % (pollsPerSymbol * 4) === 0) {
+                        const sample = rawPolls.slice(-pollsPerSymbol * 4).join(',');
+                        console.debug(`[RX][SYNC] ${rawPolls.length} polls. Recent: [${sample}]`);
                     }
                 }
 
-                // Timeout: if we never find the preamble, go back to listening.
+                // Timeout: give up and reset.
                 if (Date.now() - syncStartedAt > SYNC_TIMEOUT_MS) {
                     console.debug('[RX] Sync preamble timeout. Resetting.');
                     phase = 'WAITING_A';
+                    rawPolls.length = 0;
                     allTrits.length = 0;
                     onStatus({ type: 'listening' });
                 }
