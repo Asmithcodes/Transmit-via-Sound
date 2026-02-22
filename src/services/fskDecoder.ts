@@ -70,7 +70,25 @@ function detectFSKSymbol(fftData: Uint8Array, sampleRate: number): number {
     return bestIndex;
 }
 
-/** Checks whether a handshake tone (A or B) is dominant in the FFT data. */
+/**
+ * Checks whether a handshake tone is the **dominant peak** at the target
+ * frequency, relative to the local noise floor.
+ *
+ * A simple threshold (mag > 60) fails in real rooms because broadband noise
+ * (voices, fans, music) raises all FFT bins together — the ratio stays the
+ * same, but the absolute level exceeds 60 everywhere.
+ *
+ * Instead we:
+ *  1. Measure the target bin's magnitude.
+ *  2. Compute a local "noise floor" from bins ±30 around the target
+ *     (excluding a ±4-bin guard zone so the tone itself isn't averaged in).
+ *  3. Require the target to be ≥ SNR_RATIO × noise floor AND above a
+ *     minimum absolute floor (so silence never falsely qualifies).
+ */
+const HANDSHAKE_SNR_RATIO = 2.8;   // Target must be 2.8× louder than local noise
+const HANDSHAKE_NOISE_WINDOW = 30; // Bins on each side sampled for noise floor
+const HANDSHAKE_GUARD_BINS = 4;    // Bins around target excluded from noise floor
+
 function detectHandshakeTone(
     fftData: Uint8Array,
     sampleRate: number,
@@ -78,8 +96,31 @@ function detectHandshakeTone(
 ): boolean {
     const binSize = sampleRate / FFT_SIZE;
     const bin = Math.round(handshakeFreq / binSize);
-    const mag = (fftData[bin - 1] ?? 0) + (fftData[bin] ?? 0) + (fftData[bin + 1] ?? 0);
-    return mag / 3 > RX_DETECTION_THRESHOLD;
+
+    // Target magnitude (average ±1 bin for pitch drift tolerance).
+    const targetMag = (
+        (fftData[bin - 1] ?? 0) +
+        (fftData[bin] ?? 0) +
+        (fftData[bin + 1] ?? 0)
+    ) / 3;
+
+    // Absolute floor: don't trigger if the room is nearly silent (avoids
+    // random 0-magnitude bins dividing to huge SNR).
+    if (targetMag < RX_DETECTION_THRESHOLD) return false;
+
+    // Local noise floor: sample surrounding bins, skip the guard zone.
+    let noiseSum = 0;
+    let noiseSamples = 0;
+    for (let i = bin - HANDSHAKE_NOISE_WINDOW; i <= bin + HANDSHAKE_NOISE_WINDOW; i++) {
+        if (i < 0 || i >= fftData.length) continue;
+        if (Math.abs(i - bin) <= HANDSHAKE_GUARD_BINS) continue; // guard zone
+        noiseSum += fftData[i];
+        noiseSamples++;
+    }
+    const noiseFloor = noiseSamples > 0 ? noiseSum / noiseSamples : 1;
+
+    // Only accept if the tone is clearly above the surrounding noise floor.
+    return targetMag > noiseFloor * HANDSHAKE_SNR_RATIO;
 }
 
 /**
