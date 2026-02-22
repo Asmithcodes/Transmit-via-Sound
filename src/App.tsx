@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout/Layout';
 import { ErrorBoundary } from './components/Layout/ErrorBoundary';
 import Home from './pages/Home';
@@ -8,7 +8,7 @@ import Receiver from './pages/Receiver';
 function App() {
     return (
         <ErrorBoundary>
-            <BrowserRouter basename="/Transmit-via-Sound">
+            <HashRouter>
                 <Routes>
                     <Route path="/" element={<Layout />}>
                         <Route index element={<Home />} />
@@ -17,7 +17,7 @@ function App() {
                         <Route path="*" element={<Home />} />
                     </Route>
                 </Routes>
-            </BrowserRouter>
+            </HashRouter>
         </ErrorBoundary>
     );
 }
