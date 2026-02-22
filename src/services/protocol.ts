@@ -28,13 +28,16 @@ export const FSK_FREQUENCIES = [
 ] as const;
 
 // Duration of each FSK symbol in seconds.
-// 120 ms → ~25 bps at 3 bits/symbol.
+// 200 ms → ~15 bps at 3 bits/symbol.
 //
 // Timing math (must stay in sync with RX_POLL_INTERVAL_MS below):
 //   pollsPerSymbol = SYMBOL_DURATION_S * 1000 / RX_POLL_INTERVAL_MS
-//                 = 120 / 40 = 3  (odd number → majority vote always breaks ties)
-// With 2 polls (80ms) a single noisy poll flipped the vote; 3 polls is robust.
-export const SYMBOL_DURATION_S = 0.12;
+//                 = 200 / 40 = 5
+//
+// With 5 polls per symbol, a ±40ms phase offset causes at most 1 poll to
+// straddle the boundary. The remaining 4 always win the majority vote.
+// The previous 120ms (3 polls) was fragile — a 40ms offset caused ties.
+export const SYMBOL_DURATION_S = 0.20;
 
 // --- Handshake Tones ---
 // Transmitted before the data to synchronise the receiver.

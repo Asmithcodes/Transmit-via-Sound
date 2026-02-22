@@ -160,7 +160,13 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
         const sampleRate = ctx.sampleRate;
 
         // --- State machine ---
-        type Phase = 'WAITING_A' | 'WAITING_B' | 'COLLECTING' | 'DONE';
+        // WAITING_A  → tone A confirmed
+        // WAITING_B  → tone B first detected
+        // LOCKING    → waiting for tone B to DISAPPEAR (so we know when data actually starts)
+        // ALIGNING   → silence gap: a setTimeout will flip us to COLLECTING at the right moment
+        // COLLECTING → voting on FSK symbols
+        // DONE       → all packets received
+        type Phase = 'WAITING_A' | 'WAITING_B' | 'LOCKING' | 'ALIGNING' | 'COLLECTING' | 'DONE';
         let phase: Phase = 'WAITING_A';
 
         // Symbol accumulation
@@ -172,12 +178,11 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
         const receivedPackets = new Map<number, Uint8Array>(); // chunkIndex → payload
         let totalExpectedChunks = -1;
 
-        // Timestamps for handshake phase gating.
-        // We require A to be held for at least MIN_HANDSHAKE_HOLD_MS before
-        // we accept it as a real handshake tone (not a spurious noise spike).
+        // Handshake phase gating variables.
         let handshakeADetectedAt = 0;
-        const MIN_HANDSHAKE_HOLD_MS = 80; // ~2 polls at 40 ms
+        const MIN_HANDSHAKE_HOLD_MS = 80; // Require tone A for ≥2 polls before accepting
         let handshakeAHoldStart = 0;
+        let lockingAbsentRuns = 0;        // Consecutive polls where tone B is absent (LOCKING phase)
 
         onStatus({ type: 'listening' });
 
@@ -189,10 +194,8 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
             if (phase === 'WAITING_A') {
                 if (detectHandshakeTone(fftData, sampleRate, HANDSHAKE_FREQ_A)) {
                     if (handshakeAHoldStart === 0) {
-                        // First poll where A is detected — start the hold timer.
                         handshakeAHoldStart = Date.now();
                     } else if (Date.now() - handshakeAHoldStart >= MIN_HANDSHAKE_HOLD_MS) {
-                        // Tone A has been held long enough — accept and move on.
                         phase = 'WAITING_B';
                         handshakeADetectedAt = Date.now();
                         handshakeAHoldStart = 0;
@@ -200,28 +203,60 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                         onStatus({ type: 'syncing' });
                     }
                 } else {
-                    // Tone A disappeared before hold — reset, was a noise spike.
                     handshakeAHoldStart = 0;
                 }
 
             } else if (phase === 'WAITING_B') {
-                // Give a generous window to hear tone B.
-                // Window = tone_A duration + silence gap + tone_B duration + 300 ms margin.
+                // Window: generous enough to span the full A+silence+B duration.
                 const elapsed = Date.now() - handshakeADetectedAt;
-                const windowMs = (HANDSHAKE_TONE_DURATION_S + HANDSHAKE_SILENCE_S + HANDSHAKE_TONE_DURATION_S) * 1000 + 300;
+                const windowMs = (HANDSHAKE_TONE_DURATION_S + HANDSHAKE_SILENCE_S + HANDSHAKE_TONE_DURATION_S) * 1000 + 400;
 
                 if (detectHandshakeTone(fftData, sampleRate, HANDSHAKE_FREQ_B)) {
-                    phase = 'COLLECTING';
-                    voteBucket.length = 0;
-                    allTrits.length = 0;
-                    console.debug('[RX] Handshake B confirmed (1050 Hz). Data collection started.');
-                    onStatus({ type: 'receiving', chunk: 0, totalChunks: 0 });
+                    // Tone B is now audible. Move to LOCKING so we can detect
+                    // when it ENDS — that's when we know data is about to start.
+                    phase = 'LOCKING';
+                    lockingAbsentRuns = 0;
+                    console.debug('[RX] Handshake B detected (1050 Hz). Locking on tone end...');
                 } else if (elapsed > windowMs) {
-                    // Handshake timed out — go back to listening.
                     console.debug(`[RX] Handshake B timeout after ${elapsed}ms. Resetting.`);
                     phase = 'WAITING_A';
                     onStatus({ type: 'listening' });
                 }
+
+            } else if (phase === 'LOCKING') {
+                // Wait for tone B to disappear, then arm a timed delay equal to
+                // the post-handshake silence gap.  When that fires, collection
+                // starts phase-locked to the first data symbol boundary.
+                const elapsed = Date.now() - handshakeADetectedAt;
+
+                if (!detectHandshakeTone(fftData, sampleRate, HANDSHAKE_FREQ_B)) {
+                    lockingAbsentRuns++;
+                    if (lockingAbsentRuns >= 2) {
+                        // Tone B has definitely ended.  Schedule COLLECTING to
+                        // start after the encoder's silence gap.
+                        phase = 'ALIGNING';
+                        console.debug(`[RX] Tone B ended. Waiting ${Math.round(HANDSHAKE_SILENCE_S * 1000)}ms silence gap then collecting...`);
+                        setTimeout(() => {
+                            if (stopped || phase !== 'ALIGNING') return;
+                            voteBucket.length = 0;
+                            allTrits.length = 0;
+                            phase = 'COLLECTING';
+                            console.debug('[RX] Phase-locked! Data collection started.');
+                            onStatus({ type: 'receiving', chunk: 0, totalChunks: 0 });
+                        }, HANDSHAKE_SILENCE_S * 1000);
+                    }
+                } else {
+                    lockingAbsentRuns = 0; // Still hearing B — keep waiting
+                }
+
+                // Global safety: if something went wrong, reset after 5 s
+                if (elapsed > 5000) {
+                    phase = 'WAITING_A';
+                    onStatus({ type: 'listening' });
+                }
+
+            } else if (phase === 'ALIGNING') {
+                // Waiting for the setTimeout to fire — do nothing.
 
             } else if (phase === 'COLLECTING') {
                 const trit = detectFSKSymbol(fftData, sampleRate);
