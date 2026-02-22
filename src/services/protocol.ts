@@ -59,7 +59,7 @@ export const HANDSHAKE_SILENCE_S = 0.25;
 // its symbol vote windows with the transmitter's symbol boundaries.
 // This is the standard technique used in real FSK protocols (UART start bits,
 // modem training sequences, etc.).
-export const SYNC_PREAMBLE: readonly number[] = [7, 0, 7, 0, 7, 0, 7, 0];
+export const SYNC_PREAMBLE: readonly number[] = [1, 5, 1, 5, 1, 5, 1, 5];
 
 // --- End-of-Transmission Tone ---
 export const EOT_FREQ = 700; // Hz  (below FSK range — unambiguous)

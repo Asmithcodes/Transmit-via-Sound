@@ -170,8 +170,6 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
         let phase: Phase = 'WAITING_A';
 
         // Symbol accumulation (shared by SYNCING and COLLECTING)
-        const pollsPerSymbol = Math.round((SYMBOL_DURATION_S * 1000) / RX_POLL_INTERVAL_MS);
-        const voteBucket: number[] = [];
         const allTrits: number[] = [];
 
         // Packet reassembly
@@ -183,64 +181,81 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
         const MIN_HANDSHAKE_HOLD_MS = 80;
         let handshakeAHoldStart = 0;
 
-        // Sync preamble scanning — raw poll buffer approach.
-        // We store every individual FFT poll result (not majority-voted), then
-        // try all `pollsPerSymbol` possible phase offsets to find the one where
-        // the majority-voted trits match the preamble pattern.
+        // --- Time-domain Preamble Correlator ---
+        interface PollData {
+            time: number;
+            trit: number;
+        }
+        const syncPolls: PollData[] = [];
         let syncStartedAt = 0;
         const SYNC_TIMEOUT_MS = 15000;
-        const rawPolls: number[] = [];  // individual per-poll dominant frequency indices
 
-        /** Majority-vote `count` polls starting at `start` in `rawPolls`. */
-        function majorityVote(start: number, count: number): number {
-            const freq: Record<number, number> = {};
-            let validCount = 0;
-            for (let i = start; i < start + count && i < rawPolls.length; i++) {
-                if (rawPolls[i] >= 0) {
-                    freq[rawPolls[i]] = (freq[rawPolls[i]] ?? 0) + 1;
-                    validCount++;
-                }
-            }
-            if (validCount === 0) return -1;
-            return Number(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]);
-        }
+        // --- Time-based Data Collection ---
+        let dataStartTime = 0;
+        let currentSymbolIndex = 0;
+        const voteBucket: number[] = [];
 
         /**
-         * Try all possible phase offsets (0..pollsPerSymbol-1) and check if
-         * any of them produce the preamble pattern from the raw poll buffer.
-         * Returns the winning offset, or -1 if no match.
+         * Sweeps the acoustic timestamps in 10ms steps across the raw poll buffer
+         * to find the exact start time (t0) where the 8 preamble symbols align.
          */
-        function findPreambleOffset(): number {
+        function findPreambleStartTime(): number {
+            if (syncPolls.length === 0) return -1;
+
             const pLen = SYNC_PREAMBLE.length;
-            const totalPollsNeeded = pLen * pollsPerSymbol;
+            const pDuration = pLen * SYMBOL_DURATION_S;
+            const firstTime = syncPolls[0].time;
+            const lastTime = syncPolls[syncPolls.length - 1].time;
 
-            // We need at least enough raw polls for the preamble + up to
-            // (pollsPerSymbol - 1) extra for offset shifting.
-            if (rawPolls.length < totalPollsNeeded) return -1;
+            // Wait until we have enough duration to contain the preamble
+            if (lastTime - firstTime < pDuration) return -1;
 
-            // Try each offset, starting from the END of the buffer
-            // (most recent polls = most likely to contain the preamble).
-            for (let offset = 0; offset < pollsPerSymbol; offset++) {
-                // Start from the latest possible position in the buffer.
-                const baseStart = rawPolls.length - totalPollsNeeded - offset;
-                if (baseStart < 0) continue;
+            let bestT0 = -1;
+            let bestScore = -1;
 
-                const votedPattern: number[] = [];
-                let match = true;
+            // Sweep t0 across all possible start times in the buffer
+            for (let t0 = firstTime; t0 <= lastTime - pDuration; t0 += 0.01) {
+                let allMatched = true;
+                let score = 0;
 
                 for (let sym = 0; sym < pLen; sym++) {
-                    const trit = majorityVote(baseStart + offset + sym * pollsPerSymbol, pollsPerSymbol);
-                    votedPattern.push(trit);
-                    if (trit !== SYNC_PREAMBLE[sym]) {
-                        match = false;
+                    const symStart = t0 + sym * SYMBOL_DURATION_S;
+                    const symEnd = symStart + SYMBOL_DURATION_S;
+
+                    let matchCount = 0;
+                    let validCount = 0;
+                    const freq: Record<number, number> = {};
+
+                    for (const p of syncPolls) {
+                        if (p.time >= symStart && p.time < symEnd && p.trit >= 0) {
+                            freq[p.trit] = (freq[p.trit] ?? 0) + 1;
+                            validCount++;
+                            if (p.trit === SYNC_PREAMBLE[sym]) matchCount++;
+                        }
                     }
+
+                    if (validCount === 0) {
+                        allMatched = false;
+                        break;
+                    }
+
+                    const majorityTrit = Number(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]);
+
+                    if (majorityTrit !== SYNC_PREAMBLE[sym]) {
+                        allMatched = false;
+                        break;
+                    }
+
+                    // Score based on how clean the votes were
+                    score += (matchCount / validCount);
                 }
 
-                console.log(`[RX][SYNC] Offset ${offset}: [${votedPattern.join(',')}]`);
-
-                if (match) return offset;
+                if (allMatched && score > bestScore) {
+                    bestScore = score;
+                    bestT0 = t0;
+                }
             }
-            return -1;
+            return bestT0;
         }
 
         /** Majority-vote a symbol from the current vote bucket (used in COLLECTING). */
@@ -253,12 +268,67 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
             return Number(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0]);
         }
 
+        function checkAndParsePackets() {
+            const minTritsForMinPacket = Math.ceil(((PACKET_HEADER_BYTES + 1 + PACKET_CRC_BYTES) * 8) / 3);
+            const maxTritsPerPacket = Math.ceil(((PACKET_HEADER_BYTES + MAX_PAYLOAD_BYTES + PACKET_CRC_BYTES) * 8) / 3);
+
+            if (allTrits.length >= minTritsForMinPacket) {
+                let foundPacket = false;
+                const scanLimit = Math.min(allTrits.length - minTritsForMinPacket + 1, maxTritsPerPacket);
+
+                for (let offset = 0; offset < scanLimit; offset++) {
+                    const slicedTrits = allTrits.slice(offset);
+                    const byteCount = Math.floor((slicedTrits.length * 3) / 8);
+                    if (byteCount < PACKET_HEADER_BYTES + 1 + PACKET_CRC_BYTES) break;
+
+                    const raw = tritsToBytes(slicedTrits, byteCount);
+                    const packet = parsePacket(raw);
+
+                    if (packet && packet.crcValid) {
+                        console.log(`[RX] ✅ Valid packet at offset ${offset}: chunk ${packet.chunkIndex + 1}/${packet.totalChunks}, ${packet.payload.length}B`);
+
+                        if (!receivedPackets.has(packet.chunkIndex)) {
+                            totalExpectedChunks = packet.totalChunks;
+                            receivedPackets.set(packet.chunkIndex, packet.payload);
+                            onStatus({
+                                type: 'receiving',
+                                chunk: receivedPackets.size,
+                                totalChunks: totalExpectedChunks,
+                            });
+                        }
+
+                        const tritsConsumed = offset + Math.ceil(
+                            ((PACKET_HEADER_BYTES + packet.payload.length + PACKET_CRC_BYTES) * 8) / 3
+                        );
+                        allTrits.splice(0, tritsConsumed);
+                        foundPacket = true;
+
+                        if (totalExpectedChunks > 0 && receivedPackets.size >= totalExpectedChunks) {
+                            phase = 'DONE';
+                            const reconstructed = reassemble(receivedPackets, totalExpectedChunks);
+                            const text = bytesToText(reconstructed);
+                            console.log(`[RX] ✅ Complete! Decoded: "${text}"`);
+                            onStatus({ type: 'complete', text });
+                            stop();
+                        }
+                        break;
+                    }
+                }
+
+                if (!foundPacket && allTrits.length > maxTritsPerPacket * 2) {
+                    console.log(`[RX] Buffer overflow (${allTrits.length} trits), dropping 1.`);
+                    allTrits.shift();
+                }
+            }
+        }
+
         onStatus({ type: 'listening' });
 
         // --- Main polling loop ---
         pollTimer = setInterval(() => {
-            if (stopped) return;
+            if (stopped || !ctx) return;
             analyser.getByteFrequencyData(fftData);
+            const now = ctx.currentTime;
 
             if (phase === 'WAITING_A') {
                 if (detectHandshakeTone(fftData, sampleRate, HANDSHAKE_FREQ_A)) {
@@ -282,10 +352,9 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                 if (detectHandshakeTone(fftData, sampleRate, HANDSHAKE_FREQ_B)) {
                     phase = 'SYNCING';
                     syncStartedAt = Date.now();
-                    rawPolls.length = 0;
-                    voteBucket.length = 0;
+                    syncPolls.length = 0;
                     allTrits.length = 0;
-                    console.log('[RX] Handshake B detected. Scanning for sync preamble (multi-offset)...');
+                    console.log('[RX] Handshake B detected. Scanning for sync preamble (time-domain)...');
                     onStatus({ type: 'receiving', chunk: 0, totalChunks: 0 });
                 } else if (elapsed > windowMs) {
                     console.log(`[RX] Handshake B timeout after ${elapsed}ms. Resetting.`);
@@ -294,114 +363,57 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                 }
 
             } else if (phase === 'SYNCING') {
-                // Store every individual poll result in the raw buffer.
                 const trit = detectFSKSymbol(fftData, sampleRate);
-                rawPolls.push(trit);
+                syncPolls.push({ time: now, trit });
 
-                // Every few polls, try to find the preamble at any offset.
-                if (rawPolls.length > 0 && rawPolls.length % pollsPerSymbol === 0) {
-                    // Debug: log the rolling raw buffer
-                    const recentRaw = rawPolls.slice(-pollsPerSymbol * 4).map(t => t >= 0 ? t : '.').join('');
-                    console.log(`[RX][SYNC] Buffer (${rawPolls.length} polls). Recent raw: [${recentRaw}]`);
-
-                    const offset = findPreambleOffset();
-                    if (offset >= 0) {
-                        // Preamble found at this phase offset!
+                // Try to map the preamble onto the acoustic timeline every few polls
+                if (syncPolls.length > 0 && syncPolls.length % 5 === 0) {
+                    const t0 = findPreambleStartTime();
+                    if (t0 >= 0) {
+                        console.log(`[RX] ✅ Preamble aligned! Start time t0=${t0.toFixed(3)}. Transitioning to COLLECTING.`);
+                        dataStartTime = t0 + (SYNC_PREAMBLE.length * SYMBOL_DURATION_S);
                         phase = 'COLLECTING';
+                        currentSymbolIndex = 0;
                         voteBucket.length = 0;
-                        allTrits.length = 0;
-
-                        // Pre-fill the vote bucket with any remaining raw polls
-                        // after the preamble ends, aligned to the discovered offset.
-                        // Any polls that arrived AFTER the preamble in the raw buffer
-                        // are already the start of data — but since we check every
-                        // pollsPerSymbol polls, there are typically 0 leftover.
-
-                        console.log(`[RX] ✅ Preamble found! Phase offset=${offset}, rawPolls=${rawPolls.length}. Data collection aligned.`);
-                        rawPolls.length = 0; // Free memory
+                        syncPolls.length = 0; // free memory
                     }
                 }
 
-                // Timeout: give up and reset.
                 if (Date.now() - syncStartedAt > SYNC_TIMEOUT_MS) {
                     console.log('[RX] Sync preamble timeout. Resetting.');
                     phase = 'WAITING_A';
-                    rawPolls.length = 0;
+                    syncPolls.length = 0;
                     allTrits.length = 0;
                     onStatus({ type: 'listening' });
                 }
 
             } else if (phase === 'COLLECTING') {
                 const trit = detectFSKSymbol(fftData, sampleRate);
-                voteBucket.push(trit);
 
-                if (voteBucket.length >= pollsPerSymbol) {
-                    const winner = commitSymbol();
-                    if (winner >= 0) {
+                // Ignore late reverberations from the preamble before data starts
+                if (now < dataStartTime) return;
+
+                // Determine exactly which symbol this poll belongs to mathematically
+                const symIndex = Math.floor((now - dataStartTime) / SYMBOL_DURATION_S);
+
+                // Have we crossed a symbol boundary? (Or multiple, if JS lagged!)
+                if (symIndex > currentSymbolIndex) {
+                    // Catch up to current time, committing any pending symbols
+                    while (currentSymbolIndex < symIndex) {
+                        const winner = commitSymbol();
                         allTrits.push(winner);
-                        console.log(`[RX] Symbol: trit=${winner}, total=${allTrits.length}`);
+                        console.log(`[RX] Symbol ${currentSymbolIndex}: trit=${winner} (Total=${allTrits.length})`);
+                        currentSymbolIndex++;
+
+                        // Parse immediately to detect End Of Packet
+                        checkAndParsePackets();
+                        if (stopped) return; // Stop if checkAndParsePackets() called stop() and finished phase
                     }
+                }
 
-                    // Minimum trits for smallest possible packet.
-                    const minTritsForMinPacket = Math.ceil(
-                        ((PACKET_HEADER_BYTES + 1 + PACKET_CRC_BYTES) * 8) / 3
-                    );
-                    const maxTritsPerPacket = Math.ceil(
-                        ((PACKET_HEADER_BYTES + MAX_PAYLOAD_BYTES + PACKET_CRC_BYTES) * 8) / 3
-                    );
-
-                    if (allTrits.length >= minTritsForMinPacket) {
-                        // Sliding-window scan for a valid packet.
-                        let foundPacket = false;
-                        const scanLimit = Math.min(
-                            allTrits.length - minTritsForMinPacket + 1,
-                            maxTritsPerPacket
-                        );
-
-                        for (let offset = 0; offset < scanLimit; offset++) {
-                            const slicedTrits = allTrits.slice(offset);
-                            const byteCount = Math.floor((slicedTrits.length * 3) / 8);
-                            if (byteCount < PACKET_HEADER_BYTES + 1 + PACKET_CRC_BYTES) break;
-
-                            const raw = tritsToBytes(slicedTrits, byteCount);
-                            const packet = parsePacket(raw);
-
-                            if (packet && packet.crcValid) {
-                                console.log(`[RX] ✅ Valid packet at offset ${offset}: chunk ${packet.chunkIndex + 1}/${packet.totalChunks}, ${packet.payload.length}B`);
-
-                                if (!receivedPackets.has(packet.chunkIndex)) {
-                                    totalExpectedChunks = packet.totalChunks;
-                                    receivedPackets.set(packet.chunkIndex, packet.payload);
-                                    onStatus({
-                                        type: 'receiving',
-                                        chunk: receivedPackets.size,
-                                        totalChunks: totalExpectedChunks,
-                                    });
-                                }
-
-                                const tritsConsumed = offset + Math.ceil(
-                                    ((PACKET_HEADER_BYTES + packet.payload.length + PACKET_CRC_BYTES) * 8) / 3
-                                );
-                                allTrits.splice(0, tritsConsumed);
-                                foundPacket = true;
-
-                                if (totalExpectedChunks > 0 && receivedPackets.size >= totalExpectedChunks) {
-                                    phase = 'DONE';
-                                    const reconstructed = reassemble(receivedPackets, totalExpectedChunks);
-                                    const text = bytesToText(reconstructed);
-                                    console.log(`[RX] ✅ Complete! Decoded: "${text}"`);
-                                    onStatus({ type: 'complete', text });
-                                    stop();
-                                }
-                                break;
-                            }
-                        }
-
-                        if (!foundPacket && allTrits.length > maxTritsPerPacket * 2) {
-                            console.log(`[RX] Buffer overflow (${allTrits.length} trits), dropping 1.`);
-                            allTrits.shift();
-                        }
-                    }
+                // Only push valid signal into the vote bucket
+                if (trit >= 0) {
+                    voteBucket.push(trit);
                 }
             }
         }, RX_POLL_INTERVAL_MS);
