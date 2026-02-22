@@ -236,7 +236,7 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                     }
                 }
 
-                console.debug(`[RX][SYNC] Offset ${offset}: [${votedPattern.join(',')}]`);
+                console.log(`[RX][SYNC] Offset ${offset}: [${votedPattern.join(',')}]`);
 
                 if (match) return offset;
             }
@@ -268,7 +268,7 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                         phase = 'WAITING_B';
                         handshakeADetectedAt = Date.now();
                         handshakeAHoldStart = 0;
-                        console.debug('[RX] Handshake A confirmed (900 Hz). Waiting for B...');
+                        console.log('[RX] Handshake A confirmed (900 Hz). Waiting for B...');
                         onStatus({ type: 'syncing' });
                     }
                 } else {
@@ -285,10 +285,10 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                     rawPolls.length = 0;
                     voteBucket.length = 0;
                     allTrits.length = 0;
-                    console.debug('[RX] Handshake B detected. Scanning for sync preamble (multi-offset)...');
+                    console.log('[RX] Handshake B detected. Scanning for sync preamble (multi-offset)...');
                     onStatus({ type: 'receiving', chunk: 0, totalChunks: 0 });
                 } else if (elapsed > windowMs) {
-                    console.debug(`[RX] Handshake B timeout after ${elapsed}ms. Resetting.`);
+                    console.log(`[RX] Handshake B timeout after ${elapsed}ms. Resetting.`);
                     phase = 'WAITING_A';
                     onStatus({ type: 'listening' });
                 }
@@ -302,7 +302,7 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                 if (rawPolls.length > 0 && rawPolls.length % pollsPerSymbol === 0) {
                     // Debug: log the rolling raw buffer
                     const recentRaw = rawPolls.slice(-pollsPerSymbol * 4).map(t => t >= 0 ? t : '.').join('');
-                    console.debug(`[RX][SYNC] Buffer (${rawPolls.length} polls). Recent raw: [${recentRaw}]`);
+                    console.log(`[RX][SYNC] Buffer (${rawPolls.length} polls). Recent raw: [${recentRaw}]`);
 
                     const offset = findPreambleOffset();
                     if (offset >= 0) {
@@ -317,14 +317,14 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                         // are already the start of data — but since we check every
                         // pollsPerSymbol polls, there are typically 0 leftover.
 
-                        console.debug(`[RX] ✅ Preamble found! Phase offset=${offset}, rawPolls=${rawPolls.length}. Data collection aligned.`);
+                        console.log(`[RX] ✅ Preamble found! Phase offset=${offset}, rawPolls=${rawPolls.length}. Data collection aligned.`);
                         rawPolls.length = 0; // Free memory
                     }
                 }
 
                 // Timeout: give up and reset.
                 if (Date.now() - syncStartedAt > SYNC_TIMEOUT_MS) {
-                    console.debug('[RX] Sync preamble timeout. Resetting.');
+                    console.log('[RX] Sync preamble timeout. Resetting.');
                     phase = 'WAITING_A';
                     rawPolls.length = 0;
                     allTrits.length = 0;
@@ -339,7 +339,7 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                     const winner = commitSymbol();
                     if (winner >= 0) {
                         allTrits.push(winner);
-                        console.debug(`[RX] Symbol: trit=${winner}, total=${allTrits.length}`);
+                        console.log(`[RX] Symbol: trit=${winner}, total=${allTrits.length}`);
                     }
 
                     // Minimum trits for smallest possible packet.
@@ -367,7 +367,7 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                             const packet = parsePacket(raw);
 
                             if (packet && packet.crcValid) {
-                                console.debug(`[RX] ✅ Valid packet at offset ${offset}: chunk ${packet.chunkIndex + 1}/${packet.totalChunks}, ${packet.payload.length}B`);
+                                console.log(`[RX] ✅ Valid packet at offset ${offset}: chunk ${packet.chunkIndex + 1}/${packet.totalChunks}, ${packet.payload.length}B`);
 
                                 if (!receivedPackets.has(packet.chunkIndex)) {
                                     totalExpectedChunks = packet.totalChunks;
@@ -389,7 +389,7 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                                     phase = 'DONE';
                                     const reconstructed = reassemble(receivedPackets, totalExpectedChunks);
                                     const text = bytesToText(reconstructed);
-                                    console.debug(`[RX] ✅ Complete! Decoded: "${text}"`);
+                                    console.log(`[RX] ✅ Complete! Decoded: "${text}"`);
                                     onStatus({ type: 'complete', text });
                                     stop();
                                 }
@@ -398,7 +398,7 @@ export async function startReceiver(onStatus: RxStatusCallback): Promise<() => v
                         }
 
                         if (!foundPacket && allTrits.length > maxTritsPerPacket * 2) {
-                            console.debug(`[RX] Buffer overflow (${allTrits.length} trits), dropping 1.`);
+                            console.log(`[RX] Buffer overflow (${allTrits.length} trits), dropping 1.`);
                             allTrits.shift();
                         }
                     }
