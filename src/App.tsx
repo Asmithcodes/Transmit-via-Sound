@@ -8,7 +8,7 @@ import Receiver from './pages/Receiver';
 function App() {
     return (
         <ErrorBoundary>
-            <BrowserRouter>
+            <BrowserRouter basename="/Transmit-via-Sound">
                 <Routes>
                     <Route path="/" element={<Layout />}>
                         <Route index element={<Home />} />
