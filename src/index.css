@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@theme {
+    --color-background: #0a0a0c;
+    --color-surface: #121216;
+    --color-surface-highlight: #1f1f26;
+    --color-primary: #7cff67;
+    --color-primary-dim: #3d8032;
+    --color-accent: #5227FF;
+    --color-text: #ffffff;
+    --color-text-muted: #9ca3af;
+    --color-danger: #ff4c4c;
+    --color-warning: #facc15;
+
+    --font-family-sans: Inter, system-ui, sans-serif;
+    --font-family-mono: "Fira Code", monospace;
+}
+
+body {
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-family: var(--font-family-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+/* Glassmorphism utilities */
+.glass-panel {
+    background-color: color-mix(in srgb, var(--color-surface) 50%, transparent);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    border-radius: 1rem;
+}
+
+.glass-button {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+    border-radius: 0.75rem;
+    padding: 0.75rem 1.5rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    color: white;
+}
+
+.glass-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.glass-input {
+    background-color: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    color: white;
+    width: 100%;
+    transition: all 0.3s ease;
+}
+
+.glass-input:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 50%, transparent);
+}
+
+/* Scrollbar styling for webkit */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Reduce motion fallback */
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    ::before,
+    ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
