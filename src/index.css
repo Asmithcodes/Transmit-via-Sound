@@ -1,100 +1,271 @@
 @import "tailwindcss";
 
-@theme {
-    --color-background: #0a0a0c;
-    --color-surface: #121216;
-    --color-surface-highlight: #1f1f26;
-    --color-primary: #7cff67;
-    --color-primary-dim: #3d8032;
-    --color-accent: #5227FF;
-    --color-text: #ffffff;
-    --color-text-muted: #9ca3af;
-    --color-danger: #ff4c4c;
-    --color-warning: #facc15;
+/* ─────────────────────────────────────────────────
+   DEAD FREQUENCY — Design System
+   Aesthetic: Vintage signal intelligence hardware.
+   Warm parchment + amber TX + teal RX.
+   Typography: DM Serif Display / IBM Plex Mono / Barlow Condensed
+───────────────────────────────────────────────── */
 
-    --font-family-sans: Inter, system-ui, sans-serif;
-    --font-family-mono: "Fira Code", monospace;
+@theme {
+    /* Core palette */
+    --color-background:     #F2EDE4;
+    --color-surface:        #EAE3D6;
+    --color-surface-mid:    #DEDAD0;
+    --color-surface-deep:   #D4CEBF;
+    --color-border:         #BFB9AB;
+    --color-border-subtle:  #CEC9BC;
+
+    /* Text */
+    --color-text:           #1C1A15;
+    --color-text-muted:     #7A7265;
+    --color-text-faint:     #A8A095;
+
+    /* TX accent — Amber / Burnt Orange */
+    --color-primary:        #C85A00;
+    --color-primary-dim:    #8C3E00;
+    --color-primary-glow:   rgba(200, 90, 0, 0.15);
+
+    /* RX accent — Deep Teal */
+    --color-accent:         #007A6B;
+    --color-accent-dim:     #005549;
+    --color-accent-glow:    rgba(0, 122, 107, 0.15);
+
+    /* Status */
+    --color-success:        #2E7D32;
+    --color-danger:         #B71C1C;
+    --color-warning:        #E65100;
+
+    /* Typography */
+    --font-family-display:  'DM Serif Display', Georgia, serif;
+    --font-family-sans:     'Barlow Condensed', 'system-ui', sans-serif;
+    --font-family-mono:     'IBM Plex Mono', 'Courier New', monospace;
 }
+
+/* ── Reset & Base ─────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
 
 body {
     background-color: var(--color-background);
     color: var(--color-text);
     font-family: var(--font-family-sans);
+    font-size: 16px;
+    letter-spacing: 0.01em;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
     margin: 0;
     padding: 0;
 }
 
-/* Glassmorphism utilities */
-.glass-panel {
-    background-color: color-mix(in srgb, var(--color-surface) 50%, transparent);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    border-radius: 1rem;
-}
-
-.glass-button {
-    background-color: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(4px);
-    border-radius: 0.75rem;
-    padding: 0.75rem 1.5rem;
-    font-weight: 500;
-    transition: all 0.3s ease;
-    cursor: pointer;
-    color: white;
-}
-
-.glass-button:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.glass-input {
-    background-color: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 0.75rem;
-    padding: 0.75rem 1rem;
-    color: white;
-    width: 100%;
-    transition: all 0.3s ease;
-}
-
-.glass-input:focus {
-    outline: none;
-    border-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 50%, transparent);
-}
-
-/* Scrollbar styling for webkit */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.2);
-}
-
-::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+/* ── Panel — instrument bezel style ─── */
+.panel {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 4px;
+    /* Subtle inset shadow for depth */
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.6),
+        0 2px 8px rgba(28, 26, 21, 0.08),
+        0 1px 2px rgba(28, 26, 21, 0.04);
 }
 
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+.panel-inset {
+    background-color: var(--color-surface-deep);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    box-shadow: inset 0 1px 4px rgba(28, 26, 21, 0.12);
 }
 
-/* Reduce motion fallback */
+/* ── Button base ─────────────────────── */
+.btn {
+    font-family: var(--font-family-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.55rem 1.25rem;
+    border-radius: 3px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+.btn:active { transform: scale(0.98); }
+
+.btn-primary {
+    background: var(--color-primary);
+    border-color: var(--color-primary-dim);
+    color: #FFF8F0;
+    box-shadow: 0 2px 8px var(--color-primary-glow), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.btn-primary:hover {
+    background: #D96500;
+    box-shadow: 0 4px 16px var(--color-primary-glow);
+}
+.btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-accent {
+    background: var(--color-accent);
+    border-color: var(--color-accent-dim);
+    color: #F0FBF9;
+    box-shadow: 0 2px 8px var(--color-accent-glow), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.btn-accent:hover { background: #008B7A; }
+
+.btn-ghost {
+    background: transparent;
+    border-color: var(--color-border);
+    color: var(--color-text-muted);
+}
+.btn-ghost:hover {
+    background: var(--color-surface-mid);
+    color: var(--color-text);
+}
+
+.btn-danger {
+    background: rgba(183, 28, 28, 0.08);
+    border-color: rgba(183, 28, 28, 0.4);
+    color: var(--color-danger);
+}
+.btn-danger:hover { background: rgba(183, 28, 28, 0.15); }
+
+/* ── Text input ─────────────────────── */
+.field {
+    background: var(--color-surface-deep);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    padding: 0.65rem 0.85rem;
+    color: var(--color-text);
+    font-family: var(--font-family-mono);
+    font-size: 0.8rem;
+    width: 100%;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    box-shadow: inset 0 1px 3px rgba(28,26,21,0.1);
+}
+.field:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: inset 0 1px 3px rgba(28,26,21,0.1), 0 0 0 2px var(--color-primary-glow);
+}
+.field:disabled { opacity: 0.5; cursor: not-allowed; }
+.field::placeholder { color: var(--color-text-faint); }
+
+/* ── Label / Section header ─────────── */
+.label {
+    font-family: var(--font-family-mono);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+/* ── Stat tile ──────────────────────── */
+.stat-tile {
+    background: var(--color-surface-deep);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 3px;
+    padding: 0.75rem;
+    box-shadow: inset 0 1px 2px rgba(28,26,21,0.06);
+}
+.stat-label {
+    font-family: var(--font-family-mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-text-faint);
+    margin-bottom: 0.3rem;
+}
+.stat-value {
+    font-family: var(--font-family-mono);
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--color-text);
+    line-height: 1;
+}
+
+/* ── Progress track ─────────────────── */
+.progress-track {
+    height: 4px;
+    background: var(--color-surface-deep);
+    border-radius: 2px;
+    border: 1px solid var(--color-border-subtle);
+    overflow: hidden;
+}
+.progress-fill-tx {
+    height: 100%;
+    background: var(--color-primary);
+    box-shadow: 2px 0 8px var(--color-primary-glow);
+    border-radius: 2px;
+}
+.progress-fill-rx {
+    height: 100%;
+    background: var(--color-accent);
+    box-shadow: 2px 0 8px var(--color-accent-glow);
+    border-radius: 2px;
+}
+
+/* ── Console / log area ─────────────── */
+.console-area {
+    background: #1C1A15;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    padding: 0.75rem;
+    overflow-y: auto;
+    font-family: var(--font-family-mono);
+    font-size: 0.68rem;
+    box-shadow: inset 0 2px 8px rgba(0,0,0,0.25);
+}
+.console-area::-webkit-scrollbar { width: 6px; }
+.console-area::-webkit-scrollbar-track { background: transparent; }
+.console-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+/* Log line colors */
+.log-default { color: #8A8070; }
+.log-success  { color: #5CAD5C; }
+.log-error    { color: #E06060; }
+.log-warning  { color: #D4903A; }
+
+/* ── Badge / pill ─────────────────────*/
+.badge {
+    font-family: var(--font-family-mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0.28rem 0.65rem;
+    border-radius: 2px;
+    border: 1px solid;
+}
+
+/* ── Grid texture overlay ────────────── */
+.grid-texture {
+    background-image:
+        linear-gradient(var(--color-border-subtle) 1px, transparent 1px),
+        linear-gradient(90deg, var(--color-border-subtle) 1px, transparent 1px);
+    background-size: 24px 24px;
+    opacity: 0.3;
+}
+
+/* ── Scrollbar global ────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-surface-mid); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-faint); }
+
+/* ── Reduced motion ──────────────────── */
 @media (prefers-reduced-motion: reduce) {
-
-    *,
-    ::before,
-    ::after {
+    *, ::before, ::after {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
-        scroll-behavior: auto !important;
     }
 }

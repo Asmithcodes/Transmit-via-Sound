@@ -1,6 +1,5 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
-import Aurora from '../Background/Aurora';
 import { Footer } from './Footer';
 import { APIOverrideModal } from './APIOverrideModal';
 import { useAppStore } from '../../hooks/useAppStore';
@@ -9,25 +8,42 @@ export const Layout: React.FC = () => {
     const { reducedMotion } = useAppStore();
 
     return (
-        <div className="relative min-h-screen w-full overflow-hidden bg-background text-text flex flex-col items-center">
-            {/* Immersive Background Layer */}
-            <div className="fixed inset-0 z-0 pointer-events-none opacity-60">
-                {!reducedMotion ? (
-                    <Aurora colorStops={['#5227FF', '#2A1A5E', '#1D0F3F']} amplitude={0.8} blend={0.6} />
-                ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#121216] to-[#0a0a0c]" />
-                )}
-            </div>
+        <div className="relative min-h-screen w-full overflow-hidden flex flex-col" style={{ background: 'var(--color-background)' }}>
 
-            {/* Subtle Noise Texture Overlay */}
-            <div className="fixed inset-0 z-[1] pointer-events-none opacity-[0.03]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }}></div>
+            {/* Grid texture pattern — fills the page with a subtle ruled-paper feel */}
+            <div
+                className="fixed inset-0 z-0 pointer-events-none grid-texture"
+                aria-hidden="true"
+            />
 
-            {/* Main Content Render */}
-            <main className="relative z-10 w-full max-w-7xl mx-auto px-4 md:px-8 py-10 md:py-20 flex-grow flex flex-col h-full items-center justify-center">
+            {/* Top-left corner accent — decorative signal mark */}
+            {!reducedMotion && (
+                <div className="fixed top-0 left-0 z-0 pointer-events-none" aria-hidden="true">
+                    <svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg" opacity="0.07">
+                        {/* Concentric quarter-circles — signal antenna motif */}
+                        {[60, 110, 160, 210, 260].map((r, i) => (
+                            <path key={i} d={`M 0 0 A ${r} ${r} 0 0 1 ${r} 0`} stroke="var(--color-primary)" strokeWidth="1" fill="none" />
+                        ))}
+                    </svg>
+                </div>
+            )}
+
+            {/* Bottom-right mirror accent */}
+            {!reducedMotion && (
+                <div className="fixed bottom-0 right-0 z-0 pointer-events-none rotate-180" aria-hidden="true">
+                    <svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg" opacity="0.05">
+                        {[50, 90, 130, 170, 210].map((r, i) => (
+                            <path key={i} d={`M 0 0 A ${r} ${r} 0 0 1 ${r} 0`} stroke="var(--color-accent)" strokeWidth="1" fill="none" />
+                        ))}
+                    </svg>
+                </div>
+            )}
+
+            {/* Main content */}
+            <main className="relative z-10 w-full max-w-7xl mx-auto px-4 md:px-8 py-10 md:py-16 flex-grow flex flex-col items-center justify-center">
                 <Outlet />
             </main>
 
-            {/* Global Elements */}
             <Footer />
             <APIOverrideModal />
         </div>

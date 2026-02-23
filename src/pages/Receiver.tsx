@@ -1,11 +1,27 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import {
-    Mic, ArrowLeft, Download, CheckCircle, ShieldAlert,
-    Activity, FileText, Settings, Terminal, Copy
-} from 'lucide-react';
+import { ArrowLeft, Download, CheckCircle, ShieldAlert, FileText, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReceiver } from '../hooks/useReceiver';
-import { FSK_FREQUENCIES } from '../services/protocol';
+
+function SoundWave({ active, color }: { active: boolean; color: string }) {
+    const heights = [0.3, 0.55, 0.8, 1.0, 0.8, 0.55, 0.3];
+    return (
+        <div className="flex items-center gap-[4px]" style={{ height: 28 }}>
+            {heights.map((scale, i) => (
+                <motion.span
+                    key={i}
+                    style={{ width: 3, borderRadius: 2, background: color }}
+                    animate={active
+                        ? { height: [4, 26 * scale, 4], opacity: [0.5, 1, 0.5] }
+                        : { height: 3, opacity: 0.25 }}
+                    transition={active
+                        ? { duration: 1.2, repeat: Infinity, ease: 'easeInOut', delay: i * 0.13 }
+                        : { duration: 0.3 }}
+                />
+            ))}
+        </div>
+    );
+}
 
 export default function Receiver() {
     const location = useLocation();
@@ -13,242 +29,230 @@ export default function Receiver() {
     const mode = location.state?.mode || 'simple';
 
     const {
-        start,
-        stop,
-        status,
-        logs,
-        progress,
-        isListening,
-        isDecoding,
-        isComplete,
-        decodedText,
-        fileResult,
+        start, stop, status, logs, progress,
+        isListening, isDecoding, isComplete, decodedText, fileResult,
     } = useReceiver();
 
-    const toggleListen = () => {
-        if (isListening) {
-            stop();
-        } else {
-            start();
-        }
-    };
+    const toggleListen = () => isListening ? stop() : start();
 
-    const copyToClipboard = () => {
-        if (decodedText) navigator.clipboard.writeText(decodedText);
-    };
+    const copyToClipboard = () => { if (decodedText) navigator.clipboard.writeText(decodedText); };
 
     const downloadAsText = () => {
         const blob = new Blob([decodedText], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
-        a.download = `acoustic-payload-${Date.now()}.txt`;
-        a.click();
+        a.href = url; a.download = `acoustic-payload-${Date.now()}.txt`; a.click();
         URL.revokeObjectURL(url);
     };
 
     const downloadAsFile = () => {
         if (!fileResult) return;
         const a = document.createElement('a');
-        a.href = fileResult.url;
-        // Don't revoke the URL here: the image preview still needs it
-        a.download = fileResult.name || `acoustic-file-${Date.now()}`;
-        a.click();
+        a.href = fileResult.url; a.download = fileResult.name || `acoustic-file-${Date.now()}`; a.click();
     };
 
-    // Current microphone permission / status label text
-    const getStatusLabel = () => {
-        switch (status.type) {
-            case 'listening': return 'LISTENING';
-            case 'syncing': return 'SYNCING';
-            case 'receiving': return 'DECODING';
-            case 'complete': return 'DONE';
-            case 'error': return 'ERROR';
-            default: return 'IDLE';
-        }
-    };
-    const statusColor = isDecoding ? 'text-primary' : isListening ? 'text-accent' : 'text-textMuted';
-    const dotColor = isDecoding ? 'bg-primary' : isListening ? 'bg-accent' : 'bg-textMuted';
+    const rxLabel =
+        status.type === 'listening' ? 'LISTENING' :
+            status.type === 'syncing' ? 'SYNCING' :
+                status.type === 'receiving' ? 'DECODING' :
+                    status.type === 'complete' ? 'DONE' :
+                        status.type === 'error' ? 'ERROR' : 'IDLE';
+
+    const rxDesc =
+        isDecoding && status.type === 'receiving' ? `Packet ${status.chunk} / ${status.totalChunks}` :
+            status.type === 'syncing' ? 'Handshake detected — locking preamble...' :
+                isListening ? 'Scanning for FSK handshake tones...' :
+                    'Microphone offline. Activate to begin.';
+
+    // accent colour switches from teal (listening) to amber (decoding)
+    const accentColor = isDecoding ? 'var(--color-primary)' : 'var(--color-accent)';
+    const accentGlow = isDecoding ? 'var(--color-primary-glow)' : 'var(--color-accent-glow)';
 
     return (
-        <div className="w-full max-w-6xl flex flex-col gap-6 relative">
-            {/* Header */}
-            <div className="flex items-center justify-between glass-panel p-4 px-6 border-white/5 bg-black/40">
+        <div className="w-full max-w-6xl flex flex-col gap-5">
+
+            {/* ── Header bar ──────────────────────────── */}
+            <div className="panel flex items-center justify-between px-5 py-3">
                 <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => navigate('/')}
-                        className="p-2 rounded-full hover:bg-white/10 text-textMuted hover:text-white transition-colors"
-                    >
-                        <ArrowLeft size={20} />
+                    <button onClick={() => navigate('/')} className="btn btn-ghost"
+                        style={{ padding: '0.35rem 0.7rem', fontFamily: "'IBM Plex Mono', monospace" }}>
+                        <ArrowLeft size={14} /> Back
                     </button>
+                    <div style={{ width: 1, height: 32, background: 'var(--color-border)' }} />
                     <div>
-                        <h1 className="text-xl font-bold flex items-center gap-2">
-                            <Mic className="text-accent" size={20} />
-                            Receiver Node
-                        </h1>
-                        <p className="text-xs text-textMuted font-mono opacity-80 uppercase tracking-widest">
-                            Mode: {mode} · 8-FSK Decoder · Web Audio API
+                        <div className="flex items-center gap-2">
+                            <span className="relative flex h-2 w-2">
+                                {(isListening || isDecoding) && <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: accentColor }} />}
+                                <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: (isListening || isDecoding) ? accentColor : 'var(--color-border)' }} />
+                            </span>
+                            <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.35rem', fontWeight: 400, lineHeight: 1, color: 'var(--color-text)' }}>
+                                Receiver Node
+                            </h1>
+                        </div>
+                        <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.58rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-faint)', marginTop: 3 }}>
+                            {mode} mode · 8-FSK Decoder · Web Audio API
                         </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-4">
-                    <div className={`flex items-center gap-2 text-xs font-mono ${statusColor}`}>
-                        <span className="relative flex h-2 w-2">
-                            {(isListening || isDecoding) && (
-                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${dotColor} opacity-75`} />
-                            )}
-                            <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`} />
-                        </span>
-                        {getStatusLabel()}
-                    </div>
+
+                <div className="flex items-center gap-3">
+                    <AnimatePresence mode="wait">
+                        <motion.span
+                            key={rxLabel}
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            className="badge"
+                            style={{
+                                fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.6rem',
+                                background: (isListening || isDecoding) ? accentGlow : 'transparent',
+                                color: (isListening || isDecoding) ? accentColor : 'var(--color-text-faint)',
+                                borderColor: (isListening || isDecoding) ? (isDecoding ? 'rgba(200,90,0,0.3)' : 'rgba(0,122,107,0.3)') : 'var(--color-border)',
+                            }}
+                        >
+                            {rxLabel}
+                        </motion.span>
+                    </AnimatePresence>
+
                     <button
                         onClick={toggleListen}
-                        className={`glass-button text-xs py-1.5 px-4 font-bold border ${isListening
-                            ? 'bg-danger/10 text-danger border-danger/30 hover:bg-danger/20'
-                            : 'bg-accent/20 text-accent border-accent/30 hover:bg-accent/30'
-                            }`}
+                        className={`btn ${isListening ? 'btn-danger' : 'btn-accent'}`}
+                        style={{ fontFamily: "'IBM Plex Mono', monospace" }}
                     >
-                        {isListening ? 'STOP LISTENING' : 'ACTIVATE NODE'}
+                        {isListening ? 'STOP' : 'ACTIVATE NODE'}
                     </button>
                 </div>
             </div>
 
-            {/* Error banner */}
+            {/* ── Error banner ─────────────────────────── */}
             {status.type === 'error' && (
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="glass-panel p-4 border-danger/30 bg-danger/5 flex items-center gap-4"
-                >
-                    <ShieldAlert className="text-danger shrink-0" size={24} />
+                <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+                    className="panel flex items-center gap-4 p-4"
+                    style={{ borderColor: 'rgba(183,28,28,0.4)', background: 'rgba(183,28,28,0.05)' }}>
+                    <ShieldAlert style={{ color: 'var(--color-danger)', flexShrink: 0 }} size={22} />
                     <div>
-                        <p className="text-sm font-medium text-danger">Audio Engine Error</p>
-                        <p className="text-xs text-textMuted">{status.message}</p>
+                        <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.72rem', fontWeight: 600, color: 'var(--color-danger)' }}>
+                            Audio Engine Error
+                        </p>
+                        <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>{status.message}</p>
                     </div>
                 </motion.div>
             )}
 
-            {/* Success banner — adapts for text vs binary file */}
+            {/* ── Success banner ───────────────────────── */}
             {isComplete && (
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="glass-panel p-6 border-primary/30 bg-primary/5 space-y-4"
-                >
+                <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+                    className="panel p-5 flex flex-col gap-4"
+                    style={{ borderColor: 'rgba(46,125,50,0.4)', background: 'rgba(46,125,50,0.04)' }}>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-primary/20 text-primary rounded-full flex items-center justify-center">
-                                <CheckCircle size={24} />
+                            <div className="flex items-center justify-center rounded-full" style={{ width: 44, height: 44, background: 'rgba(46,125,50,0.12)', color: 'var(--color-success)' }}>
+                                <CheckCircle size={22} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-bold text-white">
+                                <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem', fontWeight: 400, color: 'var(--color-text)' }}>
                                     {fileResult ? 'File Reconstructed' : 'Payload Reconstructed'}
-                                </h2>
-                                <p className="text-sm text-textMuted">
+                                </p>
+                                <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>
                                     {fileResult
                                         ? `CRC32 verified · ${(fileResult.size / 1024).toFixed(1)} KB · ${fileResult.mime}`
-                                        : `CRC32 integrity verified. ${decodedText.length} characters decoded.`}
+                                        : `CRC32 verified · ${decodedText.length} chars decoded`}
                                 </p>
                             </div>
                         </div>
                         <div className="flex gap-2">
                             {!fileResult && (
-                                <button
-                                    onClick={copyToClipboard}
-                                    className="glass-button text-xs py-1.5 px-3 flex items-center gap-1"
-                                >
-                                    <Copy size={14} /> Copy
+                                <button onClick={copyToClipboard} className="btn btn-ghost" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.62rem' }}>
+                                    <Copy size={12} /> COPY
                                 </button>
                             )}
-                            <button
-                                onClick={fileResult ? downloadAsFile : downloadAsText}
-                                className="glass-button bg-white text-black hover:bg-white/90 flex items-center gap-2 font-bold text-xs"
-                            >
-                                <Download size={14} /> Download
+                            <button onClick={fileResult ? downloadAsFile : downloadAsText}
+                                className="btn"
+                                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.62rem', background: 'var(--color-text)', color: 'var(--color-background)', borderColor: 'var(--color-text)' }}>
+                                <Download size={12} /> DOWNLOAD
                             </button>
                         </div>
                     </div>
+
                     {fileResult ? (
                         fileResult.mime.startsWith('image/') ? (
-                            <img
-                                src={fileResult.url}
-                                alt={fileResult.name}
-                                className="max-h-64 max-w-full rounded-xl border border-white/10 mx-auto block object-contain"
-                            />
+                            <img src={fileResult.url} alt={fileResult.name}
+                                className="max-h-64 max-w-full rounded mx-auto block object-contain"
+                                style={{ border: '1px solid var(--color-border)' }} />
                         ) : (
-                            <div className="bg-black/40 rounded-xl border border-white/10 p-4 font-mono text-sm text-textMuted text-center">
+                            <div className="panel-inset p-4 text-center" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
                                 {fileResult.name} · {(fileResult.size / 1024).toFixed(1)} KB
                             </div>
                         )
                     ) : (
-                        <div className="bg-black/40 rounded-xl border border-white/10 p-4 font-mono text-sm text-primary/90 max-h-32 overflow-y-auto">
+                        <div className="panel-inset p-4 max-h-32 overflow-y-auto" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.8rem', color: 'var(--color-text)' }}>
                             {decodedText}
                         </div>
                     )}
                 </motion.div>
             )}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left Column: Spectrum Visualizer */}
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="glass-panel p-6 border-white/5 space-y-6 relative min-h-[300px] flex flex-col justify-end overflow-hidden">
-                        <div className="absolute top-6 left-6 text-sm font-bold tracking-widest text-textMuted uppercase flex items-center gap-2">
-                            <Activity size={16} /> Microphone Spectrum
-                            {isListening && !isDecoding && <span className="text-accent/70">(Scanning...)</span>}
-                            {isDecoding && <span className="text-primary/70">(Decoding FSK Symbols...)</span>}
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                {/* ── Left column ─────────────────────── */}
+                <div className="lg:col-span-2 flex flex-col gap-5">
+
+                    {/* Audio Reception panel */}
+                    <div className="panel p-5 flex flex-col gap-5">
+                        <div className="flex items-center justify-between">
+                            <span className="label" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Audio Reception</span>
+                            <SoundWave active={isListening || isDecoding} color={accentColor} />
                         </div>
 
-                        {/* FSK frequency markers — shows which bins are "active" for 8-FSK */}
-                        <div className="absolute top-12 right-6 flex flex-col gap-1">
-                            {FSK_FREQUENCIES.slice(0, 4).map((f) => (
-                                <span key={f} className="text-[9px] font-mono text-textMuted/50">{f}Hz</span>
-                            ))}
+                        {/* Mic icon with rings */}
+                        <div className="flex flex-col items-center py-4 gap-3">
+                            <div className="relative flex items-center justify-center">
+                                {(isListening || isDecoding) && (
+                                    <>
+                                        <motion.div className="absolute rounded-full"
+                                            style={{ width: 64, height: 64, border: `1px solid ${accentColor}`, opacity: 0.4 }}
+                                            animate={{ scale: [1, 1.7], opacity: [0.4, 0] }}
+                                            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }} />
+                                        <motion.div className="absolute rounded-full"
+                                            style={{ width: 64, height: 64, border: `1px solid ${accentColor}`, opacity: 0.25 }}
+                                            animate={{ scale: [1, 2.3], opacity: [0.25, 0] }}
+                                            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut', delay: 0.6 }} />
+                                    </>
+                                )}
+                                <div className="flex items-center justify-center rounded-full"
+                                    style={{
+                                        width: 64, height: 64,
+                                        background: (isListening || isDecoding) ? accentGlow : 'var(--color-surface-deep)',
+                                        border: `1px solid ${(isListening || isDecoding) ? (isDecoding ? 'rgba(200,90,0,0.35)' : 'rgba(0,122,107,0.35)') : 'var(--color-border)'}`,
+                                        transition: 'all 0.4s',
+                                    }}>
+                                    {/* Microphone SVG */}
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+                                        strokeLinecap="round" strokeLinejoin="round"
+                                        style={{ color: (isListening || isDecoding) ? accentColor : 'var(--color-text-faint)' }}>
+                                        <rect x="9" y="2" width="6" height="11" rx="3" />
+                                        <path d="M5 10a7 7 0 0 0 14 0" />
+                                        <line x1="12" y1="19" x2="12" y2="22" />
+                                        <line x1="8" y1="22" x2="16" y2="22" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.68rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                                {rxDesc}
+                            </p>
                         </div>
 
-                        {/* Animated spectrum bars */}
-                        <div className="h-40 w-full flex items-end justify-between gap-[2px] opacity-80">
-                            {Array.from({ length: 80 }).map((_, i) => {
-                                const isCenter = i > 30 && i < 50; // approximates FSK band
-                                return (
-                                    <motion.div
-                                        key={i}
-                                        animate={{
-                                            height: isListening
-                                                ? (isDecoding && isCenter)
-                                                    ? `${Math.random() * 60 + 40}%`
-                                                    : `${Math.random() * 20 + 5}%`
-                                                : '5%',
-                                            backgroundColor: isDecoding && isCenter
-                                                ? '#7cff67'
-                                                : isListening
-                                                    ? '#5227FF'
-                                                    : '#333',
-                                        }}
-                                        transition={{
-                                            duration: 0.15,
-                                            repeat: isListening ? Infinity : 0,
-                                            repeatType: 'reverse',
-                                            delay: i * 0.01,
-                                        }}
-                                        className="w-full rounded-t-sm"
-                                    />
-                                );
-                            })}
-                        </div>
-
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-xs font-mono">
-                                <span className="text-accent">{Math.floor(progress)}% reconstructed</span>
-                                <span className="text-textMuted">
-                                    {isDecoding && status.type === 'receiving'
-                                        ? `Packet ${status.chunk} / ${status.totalChunks}`
-                                        : isListening
-                                            ? 'Awaiting handshake tones...'
-                                            : 'Requires Signal'}
+                        {/* Progress */}
+                        <div className="flex flex-col gap-2">
+                            <div className="flex justify-between" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem' }}>
+                                <span style={{ color: accentColor }}>{Math.floor(progress)}% reconstructed</span>
+                                <span style={{ color: 'var(--color-text-faint)' }}>
+                                    {isDecoding && status.type === 'receiving' ? `Packet ${status.chunk}/${status.totalChunks}` :
+                                        isListening ? 'Awaiting handshake...' : 'Offline'}
                                 </span>
                             </div>
-                            <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-white/10">
+                            <div className="progress-track">
                                 <motion.div
-                                    className="h-full bg-accent shadow-[0_0_10px_rgba(82,39,255,0.8)]"
+                                    className={isDecoding ? 'progress-fill-tx' : 'progress-fill-rx'}
                                     initial={{ width: 0 }}
                                     animate={{ width: `${progress}%` }}
                                     transition={{ ease: 'linear' }}
@@ -257,19 +261,19 @@ export default function Receiver() {
                         </div>
                     </div>
 
-                    {/* Payload preview / waiting panel */}
-                    <div className="glass-panel p-6 border-white/5 h-48 overflow-hidden relative">
-                        <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                            <FileText size={120} />
+                    {/* Payload waiting panel */}
+                    <div className="panel p-6 flex flex-col items-center justify-center text-center relative overflow-hidden" style={{ minHeight: 180 }}>
+                        <div className="absolute inset-0 flex items-center justify-center" style={{ opacity: 0.04 }}>
+                            <FileText size={120} style={{ color: 'var(--color-text)' }} />
                         </div>
-                        <div className="relative z-10 flex flex-col items-center justify-center h-full text-center space-y-2">
+                        <div className="relative z-10 flex flex-col items-center gap-3">
                             {isComplete ? (
                                 <>
-                                    <FileText size={40} className="text-primary" />
-                                    <p className="text-lg font-medium">
+                                    <FileText size={36} style={{ color: 'var(--color-success)' }} />
+                                    <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.2rem', fontWeight: 400, color: 'var(--color-text)' }}>
                                         {fileResult ? 'File Ready' : 'Payload Ready'}
                                     </p>
-                                    <p className="text-xs text-textMuted font-mono">
+                                    <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>
                                         {fileResult
                                             ? `${fileResult.name} · ${(fileResult.size / 1024).toFixed(1)} KB · CRC32 OK`
                                             : `${decodedText.length} chars · text/plain · CRC32 OK`}
@@ -277,13 +281,13 @@ export default function Receiver() {
                                 </>
                             ) : (
                                 <>
-                                    <ShieldAlert size={40} className="text-warning/50 mb-2" />
-                                    <p className="text-textMuted font-mono text-sm">
+                                    <ShieldAlert size={36} style={{ color: isListening ? accentColor : 'var(--color-text-faint)', opacity: isListening ? 1 : 0.4 }} />
+                                    <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
                                         {isListening
                                             ? status.type === 'syncing'
-                                                ? 'Handshake A detected — locking on B...'
-                                                : 'Listening for FSK handshake (900Hz / 1050Hz)...'
-                                            : 'Waiting for full payload verification...'}
+                                                ? 'Handshake detected — syncing preamble...'
+                                                : 'Listening · 900Hz / 1050Hz handshake tones'
+                                            : 'Awaiting full payload verification'}
                                     </p>
                                 </>
                             )}
@@ -291,67 +295,48 @@ export default function Receiver() {
                     </div>
                 </div>
 
-                {/* Right Column: Telemetry & Logs */}
-                <div className="space-y-6 flex flex-col h-full">
-                    <div className="glass-panel p-6 border-white/5 space-y-4">
-                        <h2 className="text-sm font-bold tracking-widest text-textMuted uppercase flex items-center gap-2 mb-4">
-                            <Settings size={16} /> Signal Integrity
-                        </h2>
+                {/* ── Right column ─────────────────────── */}
+                <div className="flex flex-col gap-5">
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-3 bg-black/30 rounded-xl border border-white/5">
-                                <p className="text-[10px] text-textMuted uppercase tracking-wider mb-1">State</p>
-                                <p className={`text-sm font-mono ${isDecoding ? 'text-primary' : 'text-white'}`}>
-                                    {getStatusLabel()}
-                                </p>
-                            </div>
-                            <div className="p-3 bg-black/30 rounded-xl border border-white/5">
-                                <p className="text-[10px] text-textMuted uppercase tracking-wider mb-1">FFT Size</p>
-                                <p className="text-lg font-mono text-white">8192</p>
-                            </div>
-                            <div className="p-3 bg-black/30 rounded-xl border border-white/5">
-                                <p className="text-[10px] text-textMuted uppercase tracking-wider mb-1">Poll Rate</p>
-                                <p className="text-lg font-mono text-white">
-                                    40 <span className="text-xs text-textMuted">ms</span>
-                                </p>
-                            </div>
-                            <div className="p-3 bg-black/30 rounded-xl border border-white/5">
-                                <p className="text-[10px] text-textMuted uppercase tracking-wider mb-1">Packets RX</p>
-                                <p className={`text-lg font-mono ${isDecoding ? 'text-primary' : 'text-white'}`}>
-                                    {status.type === 'receiving' ? status.chunk : isComplete ? '✓' : '--'}
-                                </p>
-                            </div>
+                    {/* Signal Integrity panel */}
+                    <div className="panel p-5 flex flex-col gap-4">
+                        <span className="label" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Signal Integrity</span>
+                        <div className="grid grid-cols-2 gap-3">
+                            {[
+                                { label: 'State', value: rxLabel, accent: isDecoding || isListening },
+                                { label: 'FFT Size', value: '8192' },
+                                { label: 'Poll Rate', value: '40ms' },
+                                { label: 'Packets RX', value: status.type === 'receiving' ? String(status.chunk) : isComplete ? '✓' : '--', accent: isDecoding },
+                            ].map(({ label, value, accent }) => (
+                                <div key={label} className="stat-tile">
+                                    <p className="stat-label">{label}</p>
+                                    <p className="stat-value" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.85rem', color: accent ? accentColor : 'var(--color-text)' }}>{value}</p>
+                                </div>
+                            ))}
                         </div>
                     </div>
 
                     {/* Console Log */}
-                    <div className="glass-panel p-4 border-white/5 flex-grow flex flex-col overflow-hidden min-h-[300px]">
-                        <h2 className="text-sm font-bold tracking-widest text-textMuted uppercase flex items-center gap-2 mb-4 shrink-0">
-                            <Terminal size={16} /> Console
-                        </h2>
-                        <div className="flex-grow bg-black/40 rounded-xl border border-white/5 p-3 overflow-y-auto space-y-2 font-mono text-[11px]">
+                    <div className="panel p-4 flex flex-col gap-3 flex-grow" style={{ minHeight: 320 }}>
+                        <span className="label" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Console</span>
+                        <div className="console-area flex-grow" style={{ minHeight: 260 }}>
                             <AnimatePresence>
                                 {logs.length === 0 ? (
-                                    <p className="text-textMuted/50 text-center pt-10 pb-10">
+                                    <p style={{ color: 'rgba(138,128,112,0.4)', fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem', paddingTop: '2rem', textAlign: 'center' }}>
                                         Microphone offline. Awaiting activation...
                                     </p>
-                                ) : (
-                                    logs.map(log => (
-                                        <motion.div
-                                            key={log.id}
-                                            initial={{ opacity: 0, x: -10 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            className={`flex gap-2 ${log.type === 'error' ? 'text-danger' :
-                                                log.type === 'warning' ? 'text-warning' :
-                                                    log.type === 'success' ? 'text-primary' :
-                                                        'text-textMuted'
-                                                }`}
-                                        >
-                                            <span className="opacity-50 shrink-0">[{log.time}]</span>
-                                            <span>{log.msg}</span>
-                                        </motion.div>
-                                    ))
-                                )}
+                                ) : logs.map(log => (
+                                    <motion.div
+                                        key={log.id}
+                                        initial={{ opacity: 0, x: -6 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        className={`flex gap-2 ${log.type === 'error' ? 'log-error' : log.type === 'warning' ? 'log-warning' : log.type === 'success' ? 'log-success' : 'log-default'}`}
+                                        style={{ marginBottom: '0.3rem', fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem' }}
+                                    >
+                                        <span style={{ opacity: 0.45, flexShrink: 0 }}>[{log.time}]</span>
+                                        <span>{log.msg}</span>
+                                    </motion.div>
+                                ))}
                             </AnimatePresence>
                         </div>
                     </div>

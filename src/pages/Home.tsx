@@ -1,115 +1,193 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radio, Mic, Info, Settings2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import DecryptedText from '../components/TextAnimations/DecryptedText';
 
 type AppMode = 'simple' | 'advanced';
+
+// Per-element fade-up — explicit props are more reliable than stagger variants across React Router remounts
+const fadeUp = (delay = 0) => ({
+    initial: { opacity: 0, y: 14 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.5, ease: 'easeOut' as const, delay },
+});
 
 export default function Home() {
     const navigate = useNavigate();
     const [selectedMode, setSelectedMode] = useState<AppMode>('simple');
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full max-w-4xl flex flex-col items-center gap-12"
-        >
-            <div className="text-center space-y-4">
-                <h1 className="text-4xl md:text-6xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white to-white/60">
+        <div className="w-full max-w-3xl flex flex-col gap-10">
+
+            {/* ── Masthead ─────────────────────────────── */}
+            <motion.div {...fadeUp(0.05)} className="space-y-3">
+                <p className="label" style={{ fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-primary)', letterSpacing: '0.16em' }}>
+                    ◈ AIR-GAPPED ACOUSTIC LINK
+                </p>
+                <h1
+                    style={{
+                        fontFamily: "'DM Serif Display', Georgia, serif",
+                        fontSize: 'clamp(2.4rem, 6vw, 4.5rem)',
+                        fontWeight: 400,
+                        lineHeight: 1.05,
+                        letterSpacing: '-0.01em',
+                        color: 'var(--color-text)',
+                    }}
+                >
                     <DecryptedText
                         text="Acoustic Data Link"
-                        speed={50}
-                        maxIterations={15}
+                        speed={40}
+                        maxIterations={12}
                         animateOn="view"
                         revealDirection="start"
                     />
                 </h1>
-                <p className="text-textMuted text-lg md:text-xl font-mono">
-                    Establish an air-gapped peer-to-peer transmission.
+                <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.82rem', color: 'var(--color-text-muted)', maxWidth: '36ch' }}>
+                    Establish peer-to-peer transmission across an air gap — no network required.
                 </p>
-            </div>
+            </motion.div>
 
-            <div className="glass-panel p-2 flex bg-black/40 rounded-full border border-white/5 relative">
-                <motion.div
-                    layoutId="mode-selector"
-                    className="absolute inset-y-2 rounded-full bg-surfaceHighlight border border-white/10"
-                    style={{
-                        width: 'calc(50% - 8px)',
-                        left: selectedMode === 'simple' ? '8px' : 'calc(50%)'
-                    }}
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                />
-                <button
-                    onClick={() => setSelectedMode('simple')}
-                    className={`relative z-10 px-8 py-3 text-sm font-medium rounded-full transition-colors flex items-center gap-2 ${selectedMode === 'simple' ? 'text-white' : 'text-textMuted hover:text-white/80'}`}
-                >
-                    <Settings2 size={16} /> Simple Mode
-                </button>
-                <button
-                    onClick={() => setSelectedMode('advanced')}
-                    className={`relative z-10 px-8 py-3 text-sm font-medium rounded-full transition-colors flex items-center gap-2 ${selectedMode === 'advanced' ? 'text-white' : 'text-textMuted hover:text-white/80'}`}
-                >
-                    <Settings2 size={16} /> Advanced Mode
-                </button>
-            </div>
+            {/* ── Divider rule ─────────────────────────── */}
+            <motion.div {...fadeUp(0.15)} style={{ height: 1, background: 'var(--color-border)' }} />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-                {/* Transmitter Card */}
+            {/* ── Mode selector ────────────────────────── */}
+            <motion.div {...fadeUp(0.2)} className="flex flex-col gap-2">
+                <span className="label" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Transmission Mode</span>
+                <div className="flex gap-2">
+                    {(['simple', 'advanced'] as AppMode[]).map(m => (
+                        <button
+                            key={m}
+                            onClick={() => setSelectedMode(m)}
+                            className="btn"
+                            style={{
+                                fontFamily: "'IBM Plex Mono', monospace",
+                                background: selectedMode === m ? 'var(--color-text)' : 'transparent',
+                                color: selectedMode === m ? 'var(--color-background)' : 'var(--color-text-muted)',
+                                borderColor: selectedMode === m ? 'var(--color-text)' : 'var(--color-border)',
+                                transition: 'all 0.2s',
+                            }}
+                        >
+                            {m === 'simple' ? '01 / SIMPLE' : '02 / ADVANCED'}
+                        </button>
+                    ))}
+                </div>
+                <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.68rem', color: 'var(--color-text-faint)', marginTop: '0.25rem' }}>
+                    {selectedMode === 'simple'
+                        ? 'Text payload only. Ideal for short messages.'
+                        : 'Image file transfer. Supports up to 100 KB.'}
+                </p>
+            </motion.div>
+
+            {/* ── Node cards ───────────────────────────── */}
+            <motion.div {...fadeUp(0.3)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* TX Card */}
                 <motion.button
-                    whileHover={{ scale: 1.02 }}
+                    whileHover={{ y: -3, boxShadow: '0 8px 32px var(--color-primary-glow)' }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => navigate('/transmit', { state: { mode: selectedMode } })}
-                    className="glass-panel p-8 text-left group border border-white/5 hover:border-primary/50 transition-colors flex flex-col justify-between min-h-[280px] bg-gradient-to-br from-surface to-black/60 relative overflow-hidden"
+                    className="panel text-left p-6 flex flex-col gap-6 relative overflow-hidden group"
+                    style={{ cursor: 'pointer', minHeight: 200 }}
                 >
-                    <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-700">
-                        <Radio size={120} />
-                    </div>
-                    <div className="space-y-4 relative z-10">
-                        <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-6">
-                            <Radio size={24} />
+                    <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: 'var(--color-primary)' }} />
+
+                    <div className="flex items-start justify-between pl-4">
+                        <div>
+                            <p className="label mb-2" style={{ fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-primary)' }}>
+                                NODE / TX
+                            </p>
+                            <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2rem', lineHeight: 1, color: 'var(--color-text)', fontWeight: 400 }}>
+                                Transmit
+                            </h2>
                         </div>
-                        <h2 className="text-3xl font-semibold tracking-tight">Transmit</h2>
-                        <p className="text-textMuted leading-relaxed">
-                            Broadcast data from this device. Generates multi-frequency FSK audio signals to encode your payload.
-                        </p>
+                        <span
+                            style={{
+                                fontFamily: "'IBM Plex Mono', monospace",
+                                fontSize: '4rem',
+                                fontWeight: 700,
+                                color: 'var(--color-primary)',
+                                opacity: 0.08,
+                                lineHeight: 1,
+                                userSelect: 'none',
+                                transition: 'opacity 0.3s',
+                            }}
+                            className="group-hover:opacity-[0.16]"
+                        >
+                            TX
+                        </span>
+                    </div>
+
+                    <p className="pl-4" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.72rem', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+                        Broadcast data from this device via multi-frequency FSK audio signals.
+                    </p>
+
+                    <div className="pl-4 flex items-center gap-2">
+                        <span className="badge" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.55rem', background: 'var(--color-primary-glow)', color: 'var(--color-primary)', borderColor: 'rgba(200,90,0,0.25)' }}>
+                            ENCODE → AUDIO
+                        </span>
                     </div>
                 </motion.button>
 
-                {/* Receiver Card */}
+                {/* RX Card */}
                 <motion.button
-                    whileHover={{ scale: 1.02 }}
+                    whileHover={{ y: -3, boxShadow: '0 8px 32px var(--color-accent-glow)' }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => navigate('/receive', { state: { mode: selectedMode } })}
-                    className="glass-panel p-8 text-left group border border-white/5 hover:border-accent/50 transition-colors flex flex-col justify-between min-h-[280px] bg-gradient-to-bl from-surface to-black/60 relative overflow-hidden"
+                    className="panel text-left p-6 flex flex-col gap-6 relative overflow-hidden group"
+                    style={{ cursor: 'pointer', minHeight: 200 }}
                 >
-                    <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-700">
-                        <Mic size={120} />
-                    </div>
-                    <div className="space-y-4 relative z-10">
-                        <div className="w-12 h-12 rounded-2xl bg-accent/20 text-accent flex items-center justify-center mb-6">
-                            <Mic size={24} />
+                    <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: 'var(--color-accent)' }} />
+
+                    <div className="flex items-start justify-between pl-4">
+                        <div>
+                            <p className="label mb-2" style={{ fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-accent)' }}>
+                                NODE / RX
+                            </p>
+                            <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2rem', lineHeight: 1, color: 'var(--color-text)', fontWeight: 400 }}>
+                                Receive
+                            </h2>
                         </div>
-                        <h2 className="text-3xl font-semibold tracking-tight">Receive</h2>
-                        <p className="text-textMuted leading-relaxed">
-                            Listen for incoming data. Processes ambient audio to decode FSK sequences and reconstruct the payload.
-                        </p>
+                        <span
+                            style={{
+                                fontFamily: "'IBM Plex Mono', monospace",
+                                fontSize: '4rem',
+                                fontWeight: 700,
+                                color: 'var(--color-accent)',
+                                opacity: 0.08,
+                                lineHeight: 1,
+                                userSelect: 'none',
+                                transition: 'opacity 0.3s',
+                            }}
+                            className="group-hover:opacity-[0.16]"
+                        >
+                            RX
+                        </span>
+                    </div>
+
+                    <p className="pl-4" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.72rem', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+                        Listen for incoming FSK sequences and reconstruct the transmitted payload.
+                    </p>
+
+                    <div className="pl-4 flex items-center gap-2">
+                        <span className="badge" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.55rem', background: 'var(--color-accent-glow)', color: 'var(--color-accent)', borderColor: 'rgba(0,122,107,0.25)' }}>
+                            AUDIO → DECODE
+                        </span>
                     </div>
                 </motion.button>
-            </div>
+            </motion.div>
 
-            <div className="glass-panel w-full p-4 flex items-start gap-4 border border-white/5 bg-black/40">
-                <Info className="text-primary mt-0.5 shrink-0" size={20} />
-                <div className="space-y-1">
-                    <h4 className="text-sm font-medium text-white">System Limitations</h4>
-                    <p className="text-xs text-textMuted leading-relaxed">
-                        Acoustic data transmission operates at very low bandwidths. Expect roughly 50-200 bps.
-                        Keep devices in close proximity and ensure a quiet environment for optimal reliability.
+            {/* ── Info strip ───────────────────────────── */}
+            <motion.div
+                {...fadeUp(0.4)}
+                className="panel-inset flex items-start gap-4 p-4"
+            >
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '1rem', color: 'var(--color-primary)', marginTop: '0.1rem' }}>!</span>
+                <div>
+                    <p className="label mb-1" style={{ fontFamily: "'IBM Plex Mono',monospace" }}>System Limitations</p>
+                    <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.68rem', color: 'var(--color-text-muted)', lineHeight: 1.7 }}>
+                        Acoustic link operates at 37–200 bps. Keep devices close and ensure a quiet environment. Bit errors are normal at distance.
                     </p>
                 </div>
-            </div>
-        </motion.div>
+            </motion.div>
+        </div>
     );
 }

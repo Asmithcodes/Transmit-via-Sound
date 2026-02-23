@@ -1,21 +1,27 @@
 import React from 'react';
-import { Mail } from 'lucide-react';
 
 export const Footer: React.FC = () => {
     return (
-        <footer className="fixed bottom-0 left-0 w-full z-50 p-6 flex justify-between items-center pointer-events-none">
-            <div className="flex-1"></div>
-            <div className="pointer-events-auto bg-surface/30 backdrop-blur-sm border border-white/5 rounded-full px-4 py-2 flex items-center gap-2 transition-all hover:bg-surface/50 hover:border-white/10">
-                <a
-                    href="mailto:asmyth@duck.com"
-                    className="text-xs text-textMuted hover:text-white transition-colors flex items-center gap-2 group"
-                >
-                    <span>Developed by Asmith</span>
-                    <span className="opacity-50 group-hover:opacity-100 transition-opacity">—</span>
-                    <Mail className="w-3 h-3 group-hover:text-primary transition-colors" />
-                    <span className="group-hover:text-primary transition-colors">asmyth@duck.com</span>
-                </a>
-            </div>
+        <footer className="relative z-20 w-full border-t flex items-center justify-between px-6 md:px-10 py-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+            {/* Left — system tag */}
+            <span className="label text-[10px]" style={{ fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-text-faint)' }}>
+                ADL-8FSK / v1.0
+            </span>
+
+            {/* Centre — attribution */}
+            <a
+                href="mailto:asmyth@duck.com"
+                className="label hover:opacity-80 transition-opacity"
+                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.62rem', color: 'var(--color-text-muted)', textDecoration: 'none' }}
+            >
+                Developed by Asmith&nbsp;—&nbsp;asmyth@duck.com
+            </a>
+
+            {/* Right — status dot */}
+            <span className="flex items-center gap-1.5 label" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.58rem', color: 'var(--color-text-faint)' }}>
+                <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-success)' }} />
+                SYS OK
+            </span>
         </footer>
     );
 };
