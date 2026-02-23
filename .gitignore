@@ -24,7 +24,4 @@ dist-ssr
 *.sw?
 
 # Dev scratch / build output files
-build_output.txt
-ts_errors.txt
-tsc_errors.log
 prd.md.resolved

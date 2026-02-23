@@ -59,6 +59,22 @@ Each transmission is stripped into 64-byte maximum payloads and wrapped in a 10-
 | `payload`    | 0-64 bytes | The raw data payload slice |
 | `crc32`      | 4 bytes | 32-bit checksum of the header and payload |
 
+### FSK Frequency Map
+
+| Symbol (Trit) | 3-bit Value | Frequency (Hz) | Notes |
+|:---:|:---:|:---:|---|
+| 0 | `000` | **1400 Hz** | Lowest data frequency |
+| 1 | `001` | **1800 Hz** | Also used in Sync Preamble |
+| 2 | `010` | **2200 Hz** | |
+| 3 | `011` | **2600 Hz** | |
+| 4 | `100` | **3000 Hz** | |
+| 5 | `101` | **3400 Hz** | Also used in Sync Preamble |
+| 6 | `110` | **3800 Hz** | |
+| 7 | `111` | **4200 Hz** | Highest data frequency |
+| — | Handshake A | **900 Hz** | Outside FSK range, wake-up tone |
+| — | Handshake B | **1050 Hz** | Outside FSK range, wake-up tone |
+| — | EOT | **700 Hz** | End-of-transmission, below FSK range |
+
 ## Limitations & Future Ideas
 
 - **Bitrate**: Current speeds are around ~37 bps. Future versions will optimize the DSP loop to increase throughput.
