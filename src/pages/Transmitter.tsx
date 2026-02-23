@@ -66,34 +66,35 @@ export default function Transmitter() {
         <div className="w-full max-w-6xl flex flex-col gap-5">
 
             {/* ── Header bar ──────────────────────────── */}
-            <div className="panel flex items-center justify-between px-5 py-3">
-                <div className="flex items-center gap-4">
+            <div className="panel px-4 py-3" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                {/* Left: back + divider + title */}
+                <div className="flex items-center gap-3" style={{ minWidth: 0 }}>
                     <button
                         onClick={() => navigate('/')}
                         className="btn btn-ghost"
-                        style={{ padding: '0.35rem 0.7rem', fontFamily: "'IBM Plex Mono', monospace" }}
+                        style={{ padding: '0.35rem 0.7rem', fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0 }}
                     >
                         <ArrowLeft size={14} /> Back
                     </button>
-                    <div style={{ width: 1, height: 32, background: 'var(--color-border)' }} />
-                    <div>
+                    <div style={{ width: 1, height: 28, background: 'var(--color-border)', flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
                         <div className="flex items-center gap-2">
                             {/* Live TX indicator */}
-                            <span className="relative flex h-2 w-2">
+                            <span className="relative flex h-2 w-2" style={{ flexShrink: 0 }}>
                                 {isTransmitting && <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: 'var(--color-primary)' }} />}
                                 <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: isTransmitting ? 'var(--color-primary)' : 'var(--color-border)' }} />
                             </span>
-                            <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.35rem', fontWeight: 400, lineHeight: 1, color: 'var(--color-text)' }}>
+                            <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.2rem', fontWeight: 400, lineHeight: 1, color: 'var(--color-text)', whiteSpace: 'nowrap' }}>
                                 Transmitter Node
                             </h1>
                         </div>
-                        <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.58rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-faint)', marginTop: 3 }}>
-                            {mode} mode · 8-FSK · Web Audio API
+                        <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.55rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-faint)', marginTop: 3 }}>
+                            {mode} · 8-FSK · Web Audio
                         </p>
                     </div>
                 </div>
 
-                {/* Live status badge */}
+                {/* Right: status badge — wraps below on narrow screens */}
                 <AnimatePresence mode="wait">
                     <motion.span
                         key={txLabel}
@@ -103,7 +104,8 @@ export default function Transmitter() {
                         className="badge"
                         style={{
                             fontFamily: "'IBM Plex Mono', monospace",
-                            fontSize: '0.6rem',
+                            fontSize: '0.58rem',
+                            flexShrink: 0,
                             background: isTransmitting ? 'var(--color-primary-glow)' :
                                 status.type === 'complete' ? 'rgba(46,125,50,0.1)' : 'transparent',
                             color: isTransmitting ? 'var(--color-primary)' :

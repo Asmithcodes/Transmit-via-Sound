@@ -72,30 +72,32 @@ export default function Receiver() {
         <div className="w-full max-w-6xl flex flex-col gap-5">
 
             {/* ── Header bar ──────────────────────────── */}
-            <div className="panel flex items-center justify-between px-5 py-3">
-                <div className="flex items-center gap-4">
+            <div className="panel px-4 py-3" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                {/* Left: back + divider + title */}
+                <div className="flex items-center gap-3" style={{ minWidth: 0 }}>
                     <button onClick={() => navigate('/')} className="btn btn-ghost"
-                        style={{ padding: '0.35rem 0.7rem', fontFamily: "'IBM Plex Mono', monospace" }}>
+                        style={{ padding: '0.35rem 0.7rem', fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0 }}>
                         <ArrowLeft size={14} /> Back
                     </button>
-                    <div style={{ width: 1, height: 32, background: 'var(--color-border)' }} />
-                    <div>
+                    <div style={{ width: 1, height: 28, background: 'var(--color-border)', flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
                         <div className="flex items-center gap-2">
-                            <span className="relative flex h-2 w-2">
+                            <span className="relative flex h-2 w-2" style={{ flexShrink: 0 }}>
                                 {(isListening || isDecoding) && <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: accentColor }} />}
                                 <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: (isListening || isDecoding) ? accentColor : 'var(--color-border)' }} />
                             </span>
-                            <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.35rem', fontWeight: 400, lineHeight: 1, color: 'var(--color-text)' }}>
+                            <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.2rem', fontWeight: 400, lineHeight: 1, color: 'var(--color-text)', whiteSpace: 'nowrap' }}>
                                 Receiver Node
                             </h1>
                         </div>
-                        <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.58rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-text-faint)', marginTop: 3 }}>
-                            {mode} mode · 8-FSK Decoder · Web Audio API
+                        <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.55rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-faint)', marginTop: 3 }}>
+                            {mode} · 8-FSK · Web Audio
                         </p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                {/* Right: badge + action button — wraps below on narrow screens */}
+                <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
                     <AnimatePresence mode="wait">
                         <motion.span
                             key={rxLabel}
@@ -104,7 +106,7 @@ export default function Receiver() {
                             exit={{ opacity: 0, scale: 0.9 }}
                             className="badge"
                             style={{
-                                fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.6rem',
+                                fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.58rem',
                                 background: (isListening || isDecoding) ? accentGlow : 'transparent',
                                 color: (isListening || isDecoding) ? accentColor : 'var(--color-text-faint)',
                                 borderColor: (isListening || isDecoding) ? (isDecoding ? 'rgba(200,90,0,0.3)' : 'rgba(0,122,107,0.3)') : 'var(--color-border)',
@@ -117,9 +119,9 @@ export default function Receiver() {
                     <button
                         onClick={toggleListen}
                         className={`btn ${isListening ? 'btn-danger' : 'btn-accent'}`}
-                        style={{ fontFamily: "'IBM Plex Mono', monospace" }}
+                        style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.68rem', padding: '0.45rem 0.9rem' }}
                     >
-                        {isListening ? 'STOP' : 'ACTIVATE NODE'}
+                        {isListening ? 'STOP' : 'ACTIVATE'}
                     </button>
                 </div>
             </div>
@@ -144,23 +146,24 @@ export default function Receiver() {
                 <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
                     className="panel p-5 flex flex-col gap-4"
                     style={{ borderColor: 'rgba(46,125,50,0.4)', background: 'rgba(46,125,50,0.04)' }}>
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center justify-center rounded-full" style={{ width: 44, height: 44, background: 'rgba(46,125,50,0.12)', color: 'var(--color-success)' }}>
-                                <CheckCircle size={22} />
+                    {/* Title row + action buttons — stack vertically on mobile */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center rounded-full" style={{ width: 40, height: 40, flexShrink: 0, background: 'rgba(46,125,50,0.12)', color: 'var(--color-success)' }}>
+                                <CheckCircle size={20} />
                             </div>
-                            <div>
-                                <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem', fontWeight: 400, color: 'var(--color-text)' }}>
+                            <div style={{ minWidth: 0 }}>
+                                <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', fontWeight: 400, color: 'var(--color-text)' }}>
                                     {fileResult ? 'File Reconstructed' : 'Payload Reconstructed'}
                                 </p>
-                                <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>
+                                <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.62rem', color: 'var(--color-text-muted)' }}>
                                     {fileResult
-                                        ? `CRC32 verified · ${(fileResult.size / 1024).toFixed(1)} KB · ${fileResult.mime}`
-                                        : `CRC32 verified · ${decodedText.length} chars decoded`}
+                                        ? `CRC32 ok · ${(fileResult.size / 1024).toFixed(1)} KB`
+                                        : `CRC32 ok · ${decodedText.length} chars`}
                                 </p>
                             </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2" style={{ flexShrink: 0 }}>
                             {!fileResult && (
                                 <button onClick={copyToClipboard} className="btn btn-ghost" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.62rem' }}>
                                     <Copy size={12} /> COPY
