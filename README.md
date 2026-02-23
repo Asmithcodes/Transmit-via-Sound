@@ -1,19 +1,27 @@
 # Acoustic Data Link
 
-A browser-based acoustic data transmission app that enables devices to transmit data to each other using only sound (speakers and microphones).
+A browser-based acoustic data link for air-gapped, peer-to-peer transmission using device audio hardware. Built with React and the Web Audio API, it encodes text and files into 8-FSK audio signals to transmit data wirelessly over sound waves.
 
-**Visual Metaphor**: "Deep Space Digital Radio". The interface borrows elements from high-frequency radio dashboards and cryptography terminals, employing an immersive animated aurora background with dark, glass-morphic hardware telemetry panels, a fixed primary green accent for optimal visual contrast, and decrypted text animations. 
+## What This Does
 
-*Developed by Asmith — asmyth@duck.com*
+This project allows two devices to communicate with each other completely offline and without any RF network (Wi-Fi, Bluetooth, Cellular). It uses the device's built-in speaker to emit a sequence of musical tones (Frequency-Shift Keying) and the receiving device's microphone to listen to and decode those tones back into digital data. It is capable of transmitting both short text payloads and small files across an air gap.
 
-## Features (Phase 1: Frontend Architecture)
-- **Role Selection:** Toggle instantly between Transmitter and Receiver dashboards.
-- **Transmitter Dashboard:** Mock configurations for FSK encoding profiles, bitrate targets, and redundancy levels, with full aesthetic waveform telemetry.
-- **Receiver Dashboard:** Mock listening states, ambient audio spectrum visualization, and signal decoding console logs.
-- **Kinetic UI:** Smooth transitions and reactive elements via Framer Motion. 
-- **Anti-Gravity Architecture:** Full `prefers-reduced-motion` accessibility support, API fallback override mockups, and strict React state separation.
+## Features
 
-## Setup Instructions
+- **8-FSK Modulation**: Encodes 3 bits of data per audio symbol using 8 distinct frequencies.
+- **True Sync Preamble**: Uses a robust synchronization protocol to lock onto the transmission perfectly, discarding Javascript timer drift.
+- **SNR-Based Handshake Detection**: Analyzes Signal-to-Noise Ratio to prevent false triggers from ambient room noise.
+- **Data Integrity**: All payloads are verified upon receipt using CRC32 checksums.
+- **"Dead Frequency" UI**: A custom, vintage signal intelligence aesthetic with a warm parchment/amber/teal palette, `DM Serif Display` typography, and kinetic CSS animations. 
+
+## Tech Stack
+
+- **Frontend Framework**: React 18 + Vite
+- **Styling & Motion**: Tailwind CSS + Framer Motion (for kinetic elements and page transitions)
+- **Audio Processing**: Native Web Audio API (`AudioContext`, `AnalyserNode`, `OscillatorNode`)
+- **Icons**: Lucide React
+
+## Getting Started
 
 ### Prerequisites
 - Node.js (v18+)
@@ -22,32 +30,31 @@ A browser-based acoustic data transmission app that enables devices to transmit 
 ### Installation
 1. Clone the repository
 2. Install dependencies:
-   \`\`\`bash
+   ```bash
    npm install
-   \`\`\`
+   ```
 3. Start the development server:
-   \`\`\`bash
+   ```bash
    npm run dev
-   \`\`\`
+   ```
 
-## Deployment Guide
+*Note: For the acoustic link to work, the transmitting device needs a functioning speaker, and the receiving device needs a functioning microphone and must grant microphone permissions in the browser.*
 
-### GitHub Pages (Automated)
-This repository includes a GitHub Action for deploying natively to GitHub Pages.
-1. Push your code to the \`main\` branch.
-2. In your repository settings:
-   - Go to **Settings** > **Pages**.
-   - Set the source to **GitHub Actions**.
-3. *Phase 2 Only:* Add \`VITE_API_KEY\` to your Repository Secrets if the AI summarization fallback is necessary.
+## How It Works
 
-### Netlify Deployment
-1. Connect your repository to Netlify.
-2. The included \`netlify.toml\` handles the build command (\`npm run build\`) and SPA routing redirects automatically.
-3. *Phase 2 Only:* Add the \`VITE_API_KEY\` environment variable in the Netlify site settings.
+1. **Encoding**: The application takes a text string or a file buffer and chunks it into smaller packets. Each packet calculates a CRC32 checksum. The binary data is then mapped to 8 specific audio frequencies (8-FSK).
+2. **Transmission**: The transmitter broadcasts a dual-tone handshake to wake up any nearby receivers, followed by a known Sync Preamble, and then the actual payload frequencies using precisely scheduled Web Audio API `OscillatorNodes` (Look-Ahead scheduling).
+3. **Decoding**: The receiver continuously polls audio data via an `AnalyserNode` performing Fast Fourier Transforms (FFT). It detects the handshake using SNR, precisely aligns itself using the Sync Preamble, and then records the strongest frequencies over time to rebuild the packet.
+4. **Verification**: Once a packet is received, its CRC32 is checked. If it matches, the data is pushed to the final payload.
 
-## API Override System
-To protect production stability and reduce quota exhaustion, an Override System is implemented. If the backend services experience rate-limiting (`429`) or a key expiration, the UI intercepts the error and displays a modal.
-Users can input their own Google SDK API keys dynamically to bypass the server limitations and continue transmitting data.
+## Limitations & Future Ideas
+
+- **Bitrate**: Current speeds are around ~37 bps. Future versions will optimize the DSP loop to increase throughput.
+- **Distance**: Environmental noise heavily impacts reliability. Devices must be relatively close in a quiet room for uncorrupted transmission. Error correction coding (like Reed-Solomon) is planned to recover flipped bits automatically.
+
+## Deployment
+
+This repository includes a GitHub Action for deploying natively to GitHub Pages (`.github/workflows/deploy.yml`). It also includes a `netlify.toml` for easy deployment to Netlify.
 
 ---
-> Note: Replace the default Vite favicon in `public/` to match the radio/acoustic transmission metaphor.
+*Developed by Asmith — asmyth@duck.com*
