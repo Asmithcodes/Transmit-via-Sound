@@ -47,6 +47,18 @@ This project allows two devices to communicate with each other completely offlin
 3. **Decoding**: The receiver continuously polls audio data via an `AnalyserNode` performing Fast Fourier Transforms (FFT). It detects the handshake using SNR, precisely aligns itself using the Sync Preamble, and then records the strongest frequencies over time to rebuild the packet.
 4. **Verification**: Once a packet is received, its CRC32 is checked. If it matches, the data is pushed to the final payload.
 
+### Acoustic Packet Structure
+
+Each transmission is stripped into 64-byte maximum payloads and wrapped in a 10-byte protocol envelope before being sent over the air as FSK audio:
+
+| Segment | Size | Description |
+|---|---|---|
+| `chunkIndex` | 2 bytes | The 0-based index of the current chunk |
+| `totalChunks`| 2 bytes | Total count of chunks in the transmission |
+| `payloadLen` | 2 bytes | Length of the data payload in this packet |
+| `payload`    | 0-64 bytes | The raw data payload slice |
+| `crc32`      | 4 bytes | 32-bit checksum of the header and payload |
+
 ## Limitations & Future Ideas
 
 - **Bitrate**: Current speeds are around ~37 bps. Future versions will optimize the DSP loop to increase throughput.
@@ -54,7 +66,7 @@ This project allows two devices to communicate with each other completely offlin
 
 ## Deployment
 
-This repository includes a GitHub Action for deploying natively to GitHub Pages (`.github/workflows/deploy.yml`). It also includes a `netlify.toml` for easy deployment to Netlify.
+This repository includes a GitHub Action for deploying natively to GitHub Pages (`.github/workflows/deploy.yml`).
 
 ---
 *Developed by Asmith — asmyth@duck.com*
