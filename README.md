@@ -2,13 +2,9 @@
 
 A browser-based acoustic data link for air-gapped, peer-to-peer transmission using device audio hardware. Built with React and the Web Audio API, it encodes text and files into 8-FSK audio signals to transmit data wirelessly over sound waves.
 
----
-
 ## What This Does
 
 This project allows two devices to communicate with each other completely offline and without any RF network (Wi-Fi, Bluetooth, Cellular). It uses the device's built-in speaker to emit a sequence of musical tones (Frequency-Shift Keying) and the receiving device's microphone to listen to and decode those tones back into digital data. It is capable of transmitting both short text payloads and small files across an air gap.
-
----
 
 ## Features
 
@@ -18,16 +14,12 @@ This project allows two devices to communicate with each other completely offlin
 - **Data Integrity**: All payloads are verified upon receipt using CRC32 checksums.
 - **"Dead Frequency" UI**: A custom, vintage signal intelligence aesthetic with a warm parchment/amber/teal palette, `DM Serif Display` typography, and kinetic CSS animations. 
 
----
-
 ## Tech Stack
 
 - **Frontend Framework**: React 18 + Vite
 - **Styling & Motion**: Tailwind CSS + Framer Motion (for kinetic elements and page transitions)
 - **Audio Processing**: Native Web Audio API (`AudioContext`, `AnalyserNode`, `OscillatorNode`)
 - **Icons**: Lucide React
-
----
 
 ## Getting Started
 
@@ -47,8 +39,6 @@ This project allows two devices to communicate with each other completely offlin
    ```
 
 *Note: For the acoustic link to work, the transmitting device needs a functioning speaker, and the receiving device needs a functioning microphone and must grant microphone permissions in the browser.*
-
----
 
 ## How It Works
 
@@ -89,19 +79,13 @@ Each transmission is stripped into 64-byte maximum payloads and wrapped in a 10-
 | Handshake B | **1050 Hz** | Outside FSK range, wake-up tone |
 | EOT | **700 Hz** | End-of-transmission, below FSK range |
 
----
-
 ## Limitations & Future Ideas
 
 - **Bitrate**: Current speeds are around ~37 bps. Future versions will optimize the DSP loop to increase throughput.
 - **Distance**: Environmental noise heavily impacts reliability. Devices must be relatively close in a quiet room for uncorrupted transmission. Error correction coding (like Reed-Solomon) is planned to recover flipped bits automatically.
 
----
-
 ## Deployment
 
 This repository includes a GitHub Action for deploying natively to GitHub Pages (`.github/workflows/deploy.yml`).
-
----
 
 *Developed by Asmith — asmyth@duck.com*
