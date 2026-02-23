@@ -28,16 +28,15 @@ export const FSK_FREQUENCIES = [
 ] as const;
 
 // Duration of each FSK symbol in seconds.
-// 200 ms → ~15 bps at 3 bits/symbol.
+// 100 ms → ~30 bps at 3 bits/symbol.
 //
 // Timing math (must stay in sync with RX_POLL_INTERVAL_MS below):
 //   pollsPerSymbol = SYMBOL_DURATION_S * 1000 / RX_POLL_INTERVAL_MS
-//                 = 200 / 40 = 5
+//                 = 100 / 20 = 5
 //
-// With 5 polls per symbol, a ±40ms phase offset causes at most 1 poll to
+// With 5 polls per symbol, a ±20ms phase offset causes at most 1 poll to
 // straddle the boundary. The remaining 4 always win the majority vote.
-// The previous 120ms (3 polls) was fragile — a 40ms offset caused ties.
-export const SYMBOL_DURATION_S = 0.20;
+export const SYMBOL_DURATION_S = 0.10;
 
 // --- Handshake Tones ---
 // Transmitted before the data to synchronise the receiver.
@@ -90,7 +89,7 @@ export const FFT_SIZE = 8192;
 
 // How often (ms) the receiver polls the AnalyserNode for a new symbol.
 // Should be ≤ SYMBOL_DURATION_S * 1000 to avoid missing symbols.
-export const RX_POLL_INTERVAL_MS = 40;
+export const RX_POLL_INTERVAL_MS = 20;
 
 // --- Utility: Text ↔ Binary ↔ Trits (3-bit groups) ---
 
