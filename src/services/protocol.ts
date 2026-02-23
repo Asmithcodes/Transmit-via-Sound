@@ -30,12 +30,16 @@ export const FSK_FREQUENCIES = [
 // Duration of each FSK symbol in seconds.
 // 100 ms → ~30 bps at 3 bits/symbol.
 //
-// Timing math (must stay in sync with RX_POLL_INTERVAL_MS below):
-//   pollsPerSymbol = SYMBOL_DURATION_S * 1000 / RX_POLL_INTERVAL_MS
-//                 = 100 / 20 = 5
+// TIMING CONSTRAINT — FFT integration window:
+//   T_fft = FFT_SIZE / sampleRate = 2048 / 44100 ≈ 46 ms
 //
-// With 5 polls per symbol, a ±20ms phase offset causes at most 1 poll to
-// straddle the boundary. The remaining 4 always win the majority vote.
+//   For a poll at time t into a symbol to detect the CURRENT tone rather than
+//   the previous one, the current tone must have been audible for longer than
+//   the previous in the FFT window: t > T_fft / 2 ≈ 23 ms.
+//
+//   With SYMBOL_DURATION_S = 100 ms and RX_POLL_INTERVAL_MS = 10 ms, that is
+//   10 polls at t = 10, 20, ..., 100 ms. Polls at t ≤ 20 ms may still be wrong
+//   (2 polls); the remaining 8 all vote correctly → 8:2 majority. Safe.
 export const SYMBOL_DURATION_S = 0.10;
 
 // --- Handshake Tones ---
@@ -46,19 +50,20 @@ export const HANDSHAKE_FREQ_A = 900;  // Hz
 export const HANDSHAKE_FREQ_B = 1050; // Hz
 
 // Duration (seconds) of each handshake tone burst.
-// 350 ms gives the receiver ~8-9 polls to confirm the tone (robust over acoustic path).
-export const HANDSHAKE_TONE_DURATION_S = 0.35;
+// 500 ms gives the receiver ~50 polls at 10 ms/poll — very robust confirmation.
+export const HANDSHAKE_TONE_DURATION_S = 0.50;
 
 // Silence gap between handshake tones and before preamble (seconds).
-export const HANDSHAKE_SILENCE_S = 0.25;
+// Shorter silence since longer tone durations already guarantee clean detection.
+export const HANDSHAKE_SILENCE_S = 0.15;
 
 // --- Sync Preamble ---
 // Sent immediately after the handshake, before actual data.
 // The receiver scans for this alternating max/min pattern to self-synchronize
 // its symbol vote windows with the transmitter's symbol boundaries.
-// This is the standard technique used in real FSK protocols (UART start bits,
-// modem training sequences, etc.).
-export const SYNC_PREAMBLE: readonly number[] = [1, 5, 1, 5, 1, 5, 1, 5];
+// 16 symbols × 100 ms = 1.6 s of preamble — the time-domain correlator has a
+// large window of known acoustic data to lock t0 precisely (to ±5 ms).
+export const SYNC_PREAMBLE: readonly number[] = [1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5];
 
 // --- End-of-Transmission Tone ---
 export const EOT_FREQ = 700; // Hz  (below FSK range — unambiguous)
@@ -70,10 +75,18 @@ export const EOT_DURATION_S = 0.3;
 //   [payload: 0..MAX_PAYLOAD_BYTES] [crc32: 4 bytes]
 export const PACKET_HEADER_BYTES = 6;   // chunkIndex + totalChunks + payloadLen
 export const PACKET_CRC_BYTES = 4;
-export const MAX_PAYLOAD_BYTES = 32;  // Payload per chunk (simple mode, text only)
+export const MAX_PAYLOAD_BYTES = 64;  // Payload per chunk (text and binary transfers)
 
 // Total maximum packet size in bytes.
 export const MAX_PACKET_BYTES = PACKET_HEADER_BYTES + MAX_PAYLOAD_BYTES + PACKET_CRC_BYTES;
+
+// Sentinel chunkIndex value used for the metadata packet in binary file transfers.
+// 0xFFFF = 65535 is outside the valid data-chunk range, so it is unambiguous.
+export const METADATA_CHUNK_INDEX = 0xFFFF;
+
+// Maximum file size accepted by the acoustic transmitter.
+// At ~3.5 bytes/sec effective throughput, 10 KB ≈ ~50 min — keep small for demos.
+export const MAX_FILE_BYTES = 10 * 1024; // 10 KB
 
 // --- Audio Engine Parameters ---
 // OscillatorNode amplitude (0..1).  0.7 avoids speaker clipping.
@@ -84,12 +97,19 @@ export const TX_AMPLITUDE = 0.7;
 export const RX_DETECTION_THRESHOLD = 60;
 
 // Web Audio FFT size — must be a power of 2.
-// Larger = better frequency resolution but more CPU.
-export const FFT_SIZE = 8192;
+// Larger = better frequency resolution but longer integration window.
+//
+// FFT_SIZE = 2048 @ 44100 Hz → integration window ≈ 46 ms.
+// Our FSK frequencies are spaced 400 Hz apart; bin size = 44100/2048 ≈ 21.5 Hz,
+// giving ~18 bins between adjacent frequencies — more than enough resolution.
+// The shorter window lets us use 100 ms symbols where 8 out of 10 polls land
+// in the clean zone (t > 23 ms into the symbol). See SYMBOL_DURATION_S above.
+export const FFT_SIZE = 2048;
 
 // How often (ms) the receiver polls the AnalyserNode for a new symbol.
-// Should be ≤ SYMBOL_DURATION_S * 1000 to avoid missing symbols.
-export const RX_POLL_INTERVAL_MS = 20;
+// 10 ms → 10 polls per 100 ms symbol (up from 5 at 20 ms).
+// Higher density means more votes per symbol, more jitter tolerance.
+export const RX_POLL_INTERVAL_MS = 10;
 
 // --- Utility: Text ↔ Binary ↔ Trits (3-bit groups) ---
 

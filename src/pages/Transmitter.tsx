@@ -2,11 +2,18 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Radio, ArrowLeft, Play, Square,
-    Settings, FileBox as FileBoxIcon, Activity, Terminal, Clock, Zap
+    Settings, FileBox as FileBoxIcon, Activity, Terminal, Clock, Zap, Upload, ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTransmitter } from '../hooks/useTransmitter';
-import { FSK_FREQUENCIES, MAX_PAYLOAD_BYTES } from '../services/protocol';
+import { FSK_FREQUENCIES, MAX_PAYLOAD_BYTES, MAX_FILE_BYTES } from '../services/protocol';
+
+/** Human-friendly duration string: “8s” / “3m 12s” / “1h 4m” */
+function fmtDuration(s: number): string {
+    if (s < 60) return `${Math.round(s)}s`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+    return `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m`;
+}
 
 export default function Transmitter() {
     const location = useLocation();
@@ -14,15 +21,21 @@ export default function Transmitter() {
     const mode = location.state?.mode || 'simple';
 
     const [textInput, setTextInput] = useState('');
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-    const { start, stop, status, logs, progress, isTransmitting, estimateSeconds } = useTransmitter();
+    const { start, startFile, stop, status, logs, progress, isTransmitting, estimateSeconds } = useTransmitter();
 
     const byteCount = new TextEncoder().encode(textInput).length;
     const chunkCount = Math.ceil(byteCount / MAX_PAYLOAD_BYTES);
-    // Rough estimate — only shown once text is entered
-    const estSecs = textInput.length > 0 ? Math.round(estimateSeconds(byteCount)) : null;
+    const estSecs = textInput.length > 0 ? estimateSeconds(byteCount) : null;
 
-    const handleStart = () => start(textInput);
+    const handleStart = () => {
+        if (mode === 'advanced' && selectedFile) {
+            startFile(selectedFile);
+        } else {
+            start(textInput);
+        }
+    };
 
     return (
         <div className="w-full max-w-6xl flex flex-col gap-6">
@@ -64,26 +77,79 @@ export default function Transmitter() {
                             <FileBoxIcon size={16} /> Payload Input
                         </h2>
 
-                        <textarea
-                            value={textInput}
-                            onChange={e => setTextInput(e.target.value)}
-                            disabled={isTransmitting}
-                            placeholder="Enter text payload to transmit via acoustic FSK..."
-                            className="w-full h-32 glass-input resize-none font-mono text-sm disabled:opacity-50"
-                        />
-
-                        {/* Live encoding stats */}
-                        {textInput.length > 0 && (
-                            <div className="flex flex-wrap gap-4 text-xs font-mono text-textMuted">
-                                <span><span className="text-primary">{byteCount}</span> bytes</span>
-                                <span><span className="text-primary">{chunkCount}</span> packets</span>
-                                {estSecs !== null && (
-                                    <span className="flex items-center gap-1">
-                                        <Clock size={12} />
-                                        ~<span className="text-primary">{estSecs}s</span> estimated
-                                    </span>
+                        {mode === 'simple' ? (
+                            <>
+                                <textarea
+                                    value={textInput}
+                                    onChange={e => setTextInput(e.target.value)}
+                                    disabled={isTransmitting}
+                                    placeholder="Enter text payload to transmit via acoustic FSK..."
+                                    className="w-full h-32 glass-input resize-none font-mono text-sm disabled:opacity-50"
+                                />
+                                {textInput.length > 0 && (
+                                    <div className="flex flex-wrap gap-4 text-xs font-mono text-textMuted">
+                                        <span><span className="text-primary">{byteCount}</span> bytes</span>
+                                        <span><span className="text-primary">{chunkCount}</span> packets</span>
+                                        {estSecs !== null && (
+                                            <span className="flex items-center gap-1">
+                                                <Clock size={12} />
+                                                ~<span className="text-primary">{fmtDuration(estSecs)}</span> estimated
+                                            </span>
+                                        )}
+                                    </div>
                                 )}
-                            </div>
+                            </>
+                        ) : (
+                            <>
+                                {/* File picker — drag & drop or click to browse */}
+                                <label
+                                    className={`flex flex-col items-center justify-center h-36 rounded-xl border-2 border-dashed transition-colors ${
+                                        isTransmitting
+                                            ? 'opacity-50 cursor-not-allowed border-white/10'
+                                            : 'border-white/20 hover:border-primary/60 hover:bg-primary/5 cursor-pointer'
+                                    }`}
+                                >
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        disabled={isTransmitting}
+                                        className="sr-only"
+                                        onChange={e => {
+                                            setSelectedFile(e.target.files?.[0] ?? null);
+                                            e.target.value = '';
+                                        }}
+                                    />
+                                    {selectedFile ? (
+                                        <div className="text-center space-y-1 px-4">
+                                            <ImageIcon size={28} className="text-primary mx-auto mb-1" />
+                                            <p className="text-sm font-mono text-white truncate max-w-xs">{selectedFile.name}</p>
+                                            <p className="text-xs text-textMuted">
+                                                {(selectedFile.size / 1024).toFixed(1)} KB &middot; {selectedFile.type || 'unknown'}
+                                            </p>
+                                            {selectedFile.size > MAX_FILE_BYTES && (
+                                                <p className="text-xs text-danger">Exceeds {MAX_FILE_BYTES / 1024} KB limit</p>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <Upload size={28} className="text-textMuted mb-2" />
+                                            <p className="text-sm text-textMuted">Click to select an image</p>
+                                            <p className="text-[11px] text-textMuted/50 mt-1">Max {MAX_FILE_BYTES / 1024} KB &middot; image/*</p>
+                                        </>
+                                    )}
+                                </label>
+
+                                {selectedFile && selectedFile.size <= MAX_FILE_BYTES && (
+                                    <div className="flex flex-wrap gap-4 text-xs font-mono text-textMuted">
+                                        <span><span className="text-primary">{selectedFile.size}</span> bytes</span>
+                                        <span><span className="text-primary">{Math.ceil(selectedFile.size / MAX_PAYLOAD_BYTES) + 1}</span> packets (incl. metadata)</span>
+                                        <span className="flex items-center gap-1">
+                                            <Clock size={12} />
+                                            ~<span className="text-primary">{fmtDuration(estimateSeconds(selectedFile.size))}</span> estimated
+                                        </span>
+                                    </div>
+                                )}
+                            </>
                         )}
 
                         {/* FSK frequency legend */}
@@ -108,7 +174,11 @@ export default function Transmitter() {
                             {!isTransmitting ? (
                                 <button
                                     onClick={handleStart}
-                                    disabled={!textInput.trim()}
+                                    disabled={
+                                        mode === 'advanced'
+                                            ? !selectedFile || selectedFile.size > MAX_FILE_BYTES
+                                            : !textInput.trim()
+                                    }
                                     className="glass-button bg-primary text-black hover:bg-primary/90 flex items-center gap-2 font-bold shadow-[0_0_15px_rgba(124,255,103,0.2)] disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                     <Play size={18} fill="currentColor" /> Initialize Transmission
@@ -222,9 +292,9 @@ export default function Transmitter() {
                                             initial={{ opacity: 0, x: -10 }}
                                             animate={{ opacity: 1, x: 0 }}
                                             className={`flex gap-2 ${log.type === 'error' ? 'text-danger' :
-                                                    log.type === 'warning' ? 'text-warning' :
-                                                        log.type === 'success' ? 'text-primary' :
-                                                            'text-textMuted'
+                                                log.type === 'warning' ? 'text-warning' :
+                                                    log.type === 'success' ? 'text-primary' :
+                                                        'text-textMuted'
                                                 }`}
                                         >
                                             <span className="opacity-50 shrink-0">[{log.time}]</span>

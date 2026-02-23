@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { transmitText } from '../services/fskEncoder';
+import { transmitText, transmitFile } from '../services/fskEncoder';
 import type { TxStatus } from '../services/fskEncoder';
 import {
     MAX_PAYLOAD_BYTES,
@@ -17,6 +17,7 @@ import {
     HANDSHAKE_TONE_DURATION_S,
     HANDSHAKE_SILENCE_S,
     EOT_DURATION_S,
+    MAX_FILE_BYTES,
 } from '../services/protocol';
 
 export interface TransmitterLog {
@@ -27,8 +28,10 @@ export interface TransmitterLog {
 }
 
 export interface UseTransmitterReturn {
-    /** Start transmitting the given text. */
+    /** Start transmitting the given text (Simple Mode). */
     start: (text: string) => void;
+    /** Start transmitting a binary file (Advanced Mode). */
+    startFile: (file: File) => void;
     /** Abort an in-progress transmission. */
     stop: () => void;
     /** Current status from the FSK engine. */
@@ -102,6 +105,20 @@ export function useTransmitter(): UseTransmitterReturn {
         abortRef.current = stopFn;
     }, [handleStatus, addLog]);
 
+    const startFile = useCallback((file: File) => {
+        if (file.size > MAX_FILE_BYTES) {
+            addLog(`File too large: ${(file.size / 1024).toFixed(1)} KB. Max is ${MAX_FILE_BYTES / 1024} KB.`, 'error');
+            return;
+        }
+        setLogs([]);
+        setProgress(0);
+        const totalChunks = Math.ceil(file.size / MAX_PAYLOAD_BYTES);
+        addLog(`File: “${file.name}” (${(file.size / 1024).toFixed(1)} KB, ${file.type || 'binary'}).`, 'info');
+        addLog(`Chunking into ${totalChunks} packets of ≤${MAX_PAYLOAD_BYTES} bytes + 1 metadata packet.`, 'info');
+        const stopFn = transmitFile(file, handleStatus);
+        abortRef.current = stopFn;
+    }, [handleStatus, addLog]);
+
     const stop = useCallback(() => {
         abortRef.current?.();
         abortRef.current = null;
@@ -126,6 +143,7 @@ export function useTransmitter(): UseTransmitterReturn {
 
     return {
         start,
+        startFile,
         stop,
         status,
         logs,

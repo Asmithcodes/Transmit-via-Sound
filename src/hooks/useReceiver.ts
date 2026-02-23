@@ -10,7 +10,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { startReceiver } from '../services/fskDecoder';
-import type { RxStatus } from '../services/fskDecoder';
+import type { RxStatus, FileResult } from '../services/fskDecoder';
 import { FFT_SIZE } from '../services/protocol';
 
 export interface ReceiverLog {
@@ -37,8 +37,10 @@ export interface UseReceiverReturn {
     isDecoding: boolean;
     /** True when decoding finished successfully. */
     isComplete: boolean;
-    /** The decoded text (available when isComplete = true). */
+    /** The decoded text (available when isComplete = true and fileResult = null). */
     decodedText: string;
+    /** Decoded file result (available when isComplete = true and fileResult != null). */
+    fileResult: FileResult | null;
     /**
      * Live FFT magnitude spectrum [0..255] for the visualiser bar chart.
      * Updated at RX_POLL_INTERVAL_MS cadence.
@@ -52,16 +54,20 @@ export function useReceiver(): UseReceiverReturn {
     const [logs, setLogs] = useState<ReceiverLog[]>([]);
     const [progress, setProgress] = useState(0);
     const [decodedText, setDecodedText] = useState('');
+    const [fileResult, setFileResult] = useState<FileResult | null>(null);
     const [spectrumData, setSpectrumData] = useState<Uint8Array>(new Uint8Array(FFT_SIZE / 2));
 
     const stopFnRef = useRef<(() => void) | null>(null);
     const spectrumTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // Track blob URL so we can revoke it on cleanup / new transmission.
+    const blobUrlRef = useRef<string | null>(null);
 
     // Cleanup on unmount.
     useEffect(() => {
         return () => {
             stopFnRef.current?.();
             if (spectrumTickerRef.current) clearInterval(spectrumTickerRef.current);
+            if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
         };
     }, []);
 
@@ -94,8 +100,14 @@ export function useReceiver(): UseReceiverReturn {
                 break;
             case 'complete':
                 setProgress(100);
-                setDecodedText(s.text);
-                addLog(`Payload fully reconstructed. Decoded: "${s.text.slice(0, 60)}${s.text.length > 60 ? '...' : ''}"`, 'success');
+                if (s.fileResult) {
+                    blobUrlRef.current = s.fileResult.url;
+                    setFileResult(s.fileResult);
+                    addLog(`File received: “${s.fileResult.name}” (${(s.fileResult.size / 1024).toFixed(1)} KB, ${s.fileResult.mime}). Ready to download.`, 'success');
+                } else if (s.text) {
+                    setDecodedText(s.text);
+                    addLog(`Payload fully reconstructed. Decoded: "${s.text.slice(0, 60)}${s.text.length > 60 ? '...' : ''}"`, 'success');
+                }
                 break;
             case 'error':
                 addLog(`Error: ${s.message}`, 'error');
@@ -107,6 +119,12 @@ export function useReceiver(): UseReceiverReturn {
         setLogs([]);
         setProgress(0);
         setDecodedText('');
+        setFileResult(null);
+        // Revoke any lingering blob URL from a previous transfer.
+        if (blobUrlRef.current) {
+            URL.revokeObjectURL(blobUrlRef.current);
+            blobUrlRef.current = null;
+        }
         setSpectrumData(new Uint8Array(FFT_SIZE / 2));
         addLog('Requesting microphone permission from browser...', 'info');
 
@@ -136,6 +154,7 @@ export function useReceiver(): UseReceiverReturn {
         isDecoding,
         isComplete,
         decodedText,
+        fileResult,
         spectrumData,
     };
 }

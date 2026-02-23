@@ -22,6 +22,7 @@ export default function Receiver() {
         isDecoding,
         isComplete,
         decodedText,
+        fileResult,
     } = useReceiver();
 
     const toggleListen = () => {
@@ -44,6 +45,15 @@ export default function Receiver() {
         a.download = `acoustic-payload-${Date.now()}.txt`;
         a.click();
         URL.revokeObjectURL(url);
+    };
+
+    const downloadAsFile = () => {
+        if (!fileResult) return;
+        const a = document.createElement('a');
+        a.href = fileResult.url;
+        // Don't revoke the URL here: the image preview still needs it
+        a.download = fileResult.name || `acoustic-file-${Date.now()}`;
+        a.click();
     };
 
     // Current microphone permission / status label text
@@ -118,7 +128,7 @@ export default function Receiver() {
                 </motion.div>
             )}
 
-            {/* Success banner with decoded payload */}
+            {/* Success banner — adapts for text vs binary file */}
             {isComplete && (
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
@@ -131,32 +141,52 @@ export default function Receiver() {
                                 <CheckCircle size={24} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-bold text-white">Payload Reconstructed</h2>
-                                <p className="text-sm text-textMuted">CRC32 integrity verified. {decodedText.length} characters decoded.</p>
+                                <h2 className="text-lg font-bold text-white">
+                                    {fileResult ? 'File Reconstructed' : 'Payload Reconstructed'}
+                                </h2>
+                                <p className="text-sm text-textMuted">
+                                    {fileResult
+                                        ? `CRC32 verified · ${(fileResult.size / 1024).toFixed(1)} KB · ${fileResult.mime}`
+                                        : `CRC32 integrity verified. ${decodedText.length} characters decoded.`}
+                                </p>
                             </div>
                         </div>
                         <div className="flex gap-2">
+                            {!fileResult && (
+                                <button
+                                    onClick={copyToClipboard}
+                                    className="glass-button text-xs py-1.5 px-3 flex items-center gap-1"
+                                >
+                                    <Copy size={14} /> Copy
+                                </button>
+                            )}
                             <button
-                                onClick={copyToClipboard}
-                                className="glass-button text-xs py-1.5 px-3 flex items-center gap-1"
-                            >
-                                <Copy size={14} /> Copy
-                            </button>
-                            <button
-                                onClick={downloadAsText}
+                                onClick={fileResult ? downloadAsFile : downloadAsText}
                                 className="glass-button bg-white text-black hover:bg-white/90 flex items-center gap-2 font-bold text-xs"
                             >
                                 <Download size={14} /> Download
                             </button>
                         </div>
                     </div>
-                    {/* Decoded text preview */}
-                    <div className="bg-black/40 rounded-xl border border-white/10 p-4 font-mono text-sm text-primary/90 max-h-32 overflow-y-auto">
-                        {decodedText}
-                    </div>
+                    {fileResult ? (
+                        fileResult.mime.startsWith('image/') ? (
+                            <img
+                                src={fileResult.url}
+                                alt={fileResult.name}
+                                className="max-h-64 max-w-full rounded-xl border border-white/10 mx-auto block object-contain"
+                            />
+                        ) : (
+                            <div className="bg-black/40 rounded-xl border border-white/10 p-4 font-mono text-sm text-textMuted text-center">
+                                {fileResult.name} · {(fileResult.size / 1024).toFixed(1)} KB
+                            </div>
+                        )
+                    ) : (
+                        <div className="bg-black/40 rounded-xl border border-white/10 p-4 font-mono text-sm text-primary/90 max-h-32 overflow-y-auto">
+                            {decodedText}
+                        </div>
+                    )}
                 </motion.div>
             )}
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column: Spectrum Visualizer */}
                 <div className="lg:col-span-2 space-y-6">
@@ -236,9 +266,13 @@ export default function Receiver() {
                             {isComplete ? (
                                 <>
                                     <FileText size={40} className="text-primary" />
-                                    <p className="text-lg font-medium">Payload Ready</p>
+                                    <p className="text-lg font-medium">
+                                        {fileResult ? 'File Ready' : 'Payload Ready'}
+                                    </p>
                                     <p className="text-xs text-textMuted font-mono">
-                                        {decodedText.length} chars · text/plain · CRC32 OK
+                                        {fileResult
+                                            ? `${fileResult.name} · ${(fileResult.size / 1024).toFixed(1)} KB · CRC32 OK`
+                                            : `${decodedText.length} chars · text/plain · CRC32 OK`}
                                     </p>
                                 </>
                             ) : (
