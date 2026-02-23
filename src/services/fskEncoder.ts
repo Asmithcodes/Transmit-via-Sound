@@ -163,13 +163,14 @@ export function transmitText(text: string, onStatus: TxStatusCallback): () => vo
             cursor += EOT_DURATION_S;
 
             // Wait until the timeline finishes, then close the context.
+            // Add a larger buffer now that symbols are faster, to guarantee the final tone plays.
             const totalWallTimeMs = (cursor - ctx.currentTime) * 1000;
             setTimeout(() => {
                 if (!aborted) {
                     onStatus({ type: 'complete' });
                 }
                 safeClose();
-            }, totalWallTimeMs + 200);
+            }, totalWallTimeMs + 500);
 
         } catch (err) {
             onStatus({ type: 'error', message: String(err) });
