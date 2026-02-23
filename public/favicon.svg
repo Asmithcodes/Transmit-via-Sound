@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="100%" height="100%">
+  <defs>
+    <!-- Deep Vintage Instrument Background Gradient -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#2A2722" />
+      <stop offset="100%" stop-color="#0F0E0C" />
+    </radialGradient>
+
+    <!-- Transmit Glow (Amber) -->
+    <filter id="txGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    <linearGradient id="txGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#C85A00" stop-opacity="0" />
+      <stop offset="30%" stop-color="#C85A00" stop-opacity="1" />
+      <stop offset="70%" stop-color="#FF9E40" stop-opacity="1" />
+      <stop offset="100%" stop-color="#C85A00" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Receive Glow (Teal) -->
+    <filter id="rxGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    <linearGradient id="rxGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#007A6B" stop-opacity="0" />
+      <stop offset="30%" stop-color="#007A6B" stop-opacity="1" />
+      <stop offset="70%" stop-color="#2ED5C1" stop-opacity="1" />
+      <stop offset="100%" stop-color="#007A6B" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- iOS-style Rounded App Shape -->
+  <rect width="256" height="256" rx="56" fill="url(#bg)" stroke="#3E3B33" stroke-width="3" />
+  
+  <!-- Vintage Radar/Measurement Graph Grid -->
+  <g stroke="#ffffff" stroke-opacity="0.05" stroke-width="1.5">
+    <line x1="0" y1="64" x2="256" y2="64" />
+    <line x1="0" y1="128" x2="256" y2="128" />
+    <line x1="0" y1="192" x2="256" y2="192" />
+    <line x1="64" y1="0" x2="64" y2="256" />
+    <line x1="128" y1="0" x2="128" y2="256" />
+    <line x1="192" y1="0" x2="192" y2="256" />
+
+    <!-- Center reticle rings -->
+    <circle cx="128" cy="128" r="64" fill="none" stroke-dasharray="4 8" />
+    <circle cx="128" cy="128" r="96" fill="none" />
+  </g>
+
+  <!-- Acoustic Link Waveforms -->
+  <!-- TX Sine Wave (Amber) - Peaks ↑ then dips ↓ -->
+  <path d="M 24 128 C 56 40, 104 40, 128 128 S 200 216, 232 128" 
+        fill="none" 
+        stroke="url(#txGradient)" 
+        stroke-width="16" 
+        stroke-linecap="round" 
+        filter="url(#txGlow)" />
+        
+  <!-- RX Sine Wave (Teal) - Dips ↓ then peaks ↑ -->
+  <path d="M 24 128 C 56 216, 104 216, 128 128 S 200 40, 232 128" 
+        fill="none" 
+        stroke="url(#rxGradient)" 
+        stroke-width="16" 
+        stroke-linecap="round" 
+        filter="url(#rxGlow)" />
+
+  <!-- Data/Synchronization Nodes -->
+  <!-- Left node -->
+  <circle cx="80" cy="128" r="4.5" fill="#F2EDE4" opacity="0.6" />
+  <!-- Center Intersection Node (The "Air Gap" crossing) -->
+  <circle cx="128" cy="128" r="8" fill="#F2EDE4" />
+  <circle cx="128" cy="128" r="16" fill="none" stroke="#F2EDE4" stroke-width="2" opacity="0.5" />
+  <!-- Right node -->
+  <circle cx="176" cy="128" r="4.5" fill="#F2EDE4" opacity="0.6" />
+  
+</svg>
