@@ -12,7 +12,7 @@ const fadeUp = (delay = 0) => ({
     transition: { duration: 0.5, ease: 'easeOut' as const, delay },
 });
 
-export default function Home() {
+export default function Dashboard() {
     const navigate = useNavigate();
     const [selectedMode, setSelectedMode] = useState<AppMode>('simple');
 
